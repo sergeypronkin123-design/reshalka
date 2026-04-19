@@ -58,7 +58,7 @@ export default function Landing(){
           </div>
           <div style={{display:"flex",alignItems:"center",gap:28}}>
             {NAV.map(n=><button key={n.id} className="na" onClick={()=>scrollTo(n.id)} style={{background:"none",border:"none",fontSize:14,fontWeight:500,color:"#636366",cursor:"pointer",fontFamily:"inherit",transition:"color .2s"}}>{n.l}</button>)}
-            <button className="hu" onClick={()=>scrollTo("cta")} style={{padding:"9px 20px",background:"#1d1d1f",color:"#fff",borderRadius:24,border:"none",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",display:"flex",alignItems:"center",gap:6}}><Ic name="download" size={14} color="#fff"/>Скачать</button>
+            <button className="hu" onClick={()=>window.location.href="/app"} style={{padding:"9px 20px",background:"#1d1d1f",color:"#fff",borderRadius:24,border:"none",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",display:"flex",alignItems:"center",gap:6}}><Ic name="download" size={14} color="#fff"/>Скачать</button>
           </div>
         </div>
       </nav>
@@ -70,7 +70,7 @@ export default function Landing(){
           <h1 style={{fontFamily:"'Outfit'",fontSize:"clamp(36px,5vw,56px)",fontWeight:900,lineHeight:1.05,letterSpacing:-2,marginBottom:20,animation:"fu .6s ease .1s both"}}>Перестань<br/><span style={{color:"#E8593C"}}>мучить себя</span><br/>выбором</h1>
           <p style={{fontSize:17,color:"#636366",lineHeight:1.6,maxWidth:440,marginBottom:28,animation:"fu .6s ease .2s both"}}>AI-приложение, которое помогает определиться за 30 секунд. Фильмы, рестораны, досуг, подарки — три вопроса и готово.</p>
           <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:32,flexWrap:"wrap",animation:"fu .6s ease .3s both"}}>
-            <button className="hu" onClick={()=>scrollTo("cta")} style={{display:"flex",alignItems:"center",gap:8,padding:"15px 28px",background:"#E8593C",color:"#fff",borderRadius:28,border:"none",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 24px rgba(232,89,60,.25)",transition:"all .2s"}}>Скачать бесплатно <Ic name="arrowR" size={18} color="#fff"/></button>
+            <button className="hu" onClick={()=>window.location.href="/app"} style={{display:"flex",alignItems:"center",gap:8,padding:"15px 28px",background:"#E8593C",color:"#fff",borderRadius:28,border:"none",fontSize:16,fontWeight:600,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 24px rgba(232,89,60,.25)",transition:"all .2s"}}>Попробовать бесплатно <Ic name="arrowR" size={18} color="#fff"/></button>
             <button className="na" onClick={()=>scrollTo("how")} style={{background:"none",border:"none",fontSize:15,fontWeight:600,color:"#1d1d1f",cursor:"pointer",fontFamily:"inherit",borderBottom:"1.5px solid #1d1d1f",paddingBottom:2}}>Как это работает</button>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:14,animation:"fu .6s ease .4s both"}}>
@@ -237,11 +237,10 @@ export default function Landing(){
       <section style={{padding:"80px 0"}} id="cta"><div style={{maxWidth:540,margin:"0 auto",padding:"0 24px",textAlign:"center"}}>
         <Reveal><div style={{width:64,height:64,borderRadius:20,background:"linear-gradient(135deg,#E8593C,#D4537E)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",boxShadow:"0 8px 32px rgba(232,89,60,.3)"}}><Ic name="sparkle" size={28} color="#fff"/></div></Reveal>
         <Reveal delay={80}><h2 style={S.h2}>Готовы перестать мучиться?</h2></Reveal>
-        <Reveal delay={160}><p style={{fontSize:17,color:"#636366",lineHeight:1.6,maxWidth:420,margin:"0 auto 28px"}}>Скачайте Решалку бесплатно. Первые 100 решений — с полным AI без ограничений.</p></Reveal>
+        <Reveal delay={160}><p style={{fontSize:17,color:"#636366",lineHeight:1.6,maxWidth:420,margin:"0 auto 28px"}}>Попробуйте бесплатно — 5 AI-рекомендаций без регистрации карты.</p></Reveal>
         <Reveal delay={240}>
-          {ok?<div style={{padding:"20px 24px",background:"#E1F5EE",borderRadius:16,display:"inline-flex",alignItems:"center",gap:10}}><Ic name="check" size={20} color="#1D9E75"/><p style={{fontSize:15,fontWeight:600,color:"#0F6E56"}}>Ссылка отправлена на {email}</p></div>
-          :<div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" onKeyDown={e=>e.key==="Enter"&&submit()} style={{minWidth:200,padding:"14px 18px",borderRadius:14,border:"0.5px solid #e5e5ea",fontSize:15,fontFamily:"inherit",outline:"none",background:"#fafafa",flex:1,maxWidth:280}}/><button className="hu" onClick={submit} style={{display:"flex",alignItems:"center",gap:6,padding:"14px 24px",background:"#E8593C",color:"#fff",borderRadius:14,border:"none",fontSize:15,fontWeight:600,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 16px rgba(232,89,60,.25)",transition:"all .2s",whiteSpace:"nowrap"}}>Получить ссылку <Ic name="arrowR" size={16} color="#fff"/></button></div>}
-          <p style={{fontSize:12,color:"#8a8a8e",marginTop:12}}>Бесплатно. iOS и Android. Без рекламы.</p>
+          <button className="hu" onClick={()=>window.location.href="/app"} style={{display:"inline-flex",alignItems:"center",gap:8,padding:"16px 32px",background:"#E8593C",color:"#fff",borderRadius:28,border:"none",fontSize:17,fontWeight:600,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 6px 24px rgba(232,89,60,.3)",transition:"all .2s",marginBottom:12}}>Попробовать бесплатно <Ic name="arrowR" size={18} color="#fff"/></button>
+          <p style={{fontSize:12,color:"#8a8a8e",marginTop:12}}>Без карты. Без рекламы. 30 секунд до первого решения.</p>
         </Reveal>
       </div></section>
 
