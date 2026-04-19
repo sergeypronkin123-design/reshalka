@@ -1,12 +1,20 @@
-import { PrismaClient } from '@prisma/client';
-import http from 'http';
-import crypto from 'crypto';
+const http = require('http');
+const crypto = require('crypto');
 
-const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+
+/* ── Prisma (lazy init) ── */
+let prisma = null;
+async function db() {
+  if (!prisma) {
+    const { PrismaClient } = await import('@prisma/client');
+    prisma = new PrismaClient();
+  }
+  return prisma;
+}
 
 /* ── Helpers ── */
 function cors() {
@@ -14,25 +22,26 @@ function cors() {
 }
 function send(res, status, data) { res.writeHead(status, cors()); res.end(JSON.stringify(data)); }
 function body(req) { return new Promise(r => { let b = ''; req.on('data', c => b += c); req.on('end', () => { try { r(JSON.parse(b)); } catch { r({}); } }); }); }
+
 function jwtSign(payload) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const pay = Buffer.from(JSON.stringify({ ...payload, exp: Date.now() + 7 * 86400000 })).toString('base64url');
-  const sig = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${pay}`).digest('base64url');
-  return `${header}.${pay}.${sig}`;
+  const sig = crypto.createHmac('sha256', JWT_SECRET).update(header + '.' + pay).digest('base64url');
+  return header + '.' + pay + '.' + sig;
 }
 function jwtVerify(token) {
   try {
-    const [header, pay, sig] = token.split('.');
-    const expected = crypto.createHmac('sha256', JWT_SECRET).update(`${header}.${pay}`).digest('base64url');
-    if (sig !== expected) return null;
-    const payload = JSON.parse(Buffer.from(pay, 'base64url').toString());
+    const parts = token.split('.');
+    const expected = crypto.createHmac('sha256', JWT_SECRET).update(parts[0] + '.' + parts[1]).digest('base64url');
+    if (parts[2] !== expected) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
     if (payload.exp < Date.now()) return null;
     return payload;
   } catch { return null; }
 }
 function getUser(req) {
   const auth = req.headers.authorization;
-  if (!auth?.startsWith('Bearer ')) return null;
+  if (!auth || !auth.startsWith('Bearer ')) return null;
   return jwtVerify(auth.slice(7));
 }
 function genOtp() { return String(Math.floor(1000 + Math.random() * 9000)); }
@@ -62,280 +71,235 @@ const CATEGORIES = {
 };
 
 /* ── Claude AI ── */
-async function askClaude(category, answers, preferences = {}, rejected = []) {
-  const cat = CATEGORIES[category]?.label || category;
-  const answersText = answers.map(a => `${a.question}: ${a.answer}`).join('\n');
-  const prefsText = Object.keys(preferences).length ? `\nПредпочтения: ${JSON.stringify(preferences)}` : '';
-  const rejText = rejected.length ? `\nНЕ предлагай: ${rejected.join(', ')}` : '';
+async function askClaude(category, answers, preferences, rejected) {
+  const cat = CATEGORIES[category] ? CATEGORIES[category].label : category;
+  const answersText = answers.map(function(a) { return a.question + ': ' + a.answer; }).join('\n');
+  const prefsText = preferences && Object.keys(preferences).length ? '\nПредпочтения: ' + JSON.stringify(preferences) : '';
+  const rejText = rejected && rejected.length ? '\nНЕ предлагай: ' + rejected.join(', ') : '';
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514', max_tokens: 1000,
-      system: `Ты — AI-консьерж «Решалка». Категория: ${cat}.${prefsText}${rejText}\nДай конкретную рекомендацию с реальным названием. 2-3 предложения причины. 2 альтернативы.\nJSON без markdown: {"name":"","desc":"","reason":"","tags":["","",""],"alts":[{"name":"","desc":""},{"name":"","desc":""}]}`,
+      system: 'Ты — AI-консьерж «Решалка». Категория: ' + cat + '.' + prefsText + rejText + '\nДай конкретную рекомендацию с реальным названием. 2-3 предложения причины. 2 альтернативы.\nJSON без markdown: {"name":"","desc":"","reason":"","tags":["","",""],"alts":[{"name":"","desc":""},{"name":"","desc":""}]}',
       messages: [{ role: 'user', content: answersText }],
     }),
   });
   const data = await res.json();
-  const text = (data.content || []).map(b => b.type === 'text' ? b.text : '').join('');
+  const text = (data.content || []).map(function(b) { return b.type === 'text' ? b.text : ''; }).join('');
   return JSON.parse(text.replace(/```json|```/g, '').trim());
 }
 
 /* ── Router ── */
-const server = http.createServer(async (req, res) => {
+const server = http.createServer(async function(req, res) {
   if (req.method === 'OPTIONS') { res.writeHead(204, cors()); return res.end(); }
 
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  const url = new URL(req.url, 'http://' + req.headers.host);
   const path = url.pathname;
   const method = req.method;
 
   try {
-    // ─── Health ───
+    // Health
     if (path === '/health') return send(res, 200, { status: 'ok', time: new Date().toISOString() });
 
-    // ─── Auth: Register ───
-    if (path === '/api/auth/register' && method === 'POST') {
-      const { email, phone, name } = await body(req);
-      if (!email || !name) return send(res, 400, { error: 'Email и имя обязательны' });
-
-      const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) return send(res, 409, { error: 'Пользователь с таким email уже существует' });
-
-      if (phone) {
-        const phoneExists = await prisma.user.findUnique({ where: { phone } });
-        if (phoneExists) return send(res, 409, { error: 'Этот номер телефона уже зарегистрирован' });
-      }
-
-      const otp = genOtp();
-      await prisma.otpCode.create({ data: { email, code: otp, expiresAt: new Date(Date.now() + 600000) } });
-      console.log(`OTP for ${email}: ${otp}`); // В проде отправлять через SMS/email сервис
-
-      return send(res, 200, { message: 'Код отправлен', email });
-    }
-
-    // ─── Auth: Login ───
-    if (path === '/api/auth/login' && method === 'POST') {
-      const { email } = await body(req);
-      if (!email) return send(res, 400, { error: 'Email обязателен' });
-
-      const user = await prisma.user.findUnique({ where: { email } });
-      if (!user) return send(res, 404, { error: 'Пользователь не найден' });
-
-      const otp = genOtp();
-      await prisma.otpCode.create({ data: { email, code: otp, expiresAt: new Date(Date.now() + 600000) } });
-      console.log(`OTP for ${email}: ${otp}`);
-
-      return send(res, 200, { message: 'Код отправлен', email });
-    }
-
-    // ─── Auth: Verify OTP ───
-    if (path === '/api/auth/verify' && method === 'POST') {
-      const { email, code, name, phone } = await body(req);
-      if (!email || !code) return send(res, 400, { error: 'Email и код обязательны' });
-
-      const otpRecord = await prisma.otpCode.findFirst({
-        where: { email, code, used: false, expiresAt: { gt: new Date() } },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (!otpRecord) return send(res, 401, { error: 'Неверный или истекший код' });
-
-      await prisma.otpCode.update({ where: { id: otpRecord.id }, data: { used: true } });
-
-      let user = await prisma.user.findUnique({ where: { email } });
-      if (!user) {
-        user = await prisma.user.create({ data: { email, name: name || email.split('@')[0], phone } });
-      }
-      await prisma.user.update({ where: { id: user.id }, data: { lastActive: new Date() } });
-
-      const token = jwtSign({ userId: user.id, email: user.email });
-      return send(res, 200, { token, user: { id: user.id, name: user.name, email: user.email, isPro: user.isPro, freeRequestsLeft: user.freeRequestsLeft } });
-    }
-
-    // ─── Categories ───
+    // Categories
     if (path === '/api/categories' && method === 'GET') {
-      const cats = Object.entries(CATEGORIES).map(([id, c]) => ({ id, label: c.label, icon: c.icon, questionsCount: c.questions.length }));
+      var cats = Object.entries(CATEGORIES).map(function(e) { return { id: e[0], label: e[1].label, icon: e[1].icon, questionsCount: e[1].questions.length }; });
       return send(res, 200, { categories: cats });
     }
-
     if (path.startsWith('/api/questions/') && method === 'GET') {
-      const catId = path.split('/').pop();
+      var catId = path.split('/').pop();
       if (!CATEGORIES[catId]) return send(res, 400, { error: 'Неизвестная категория' });
       return send(res, 200, { questions: CATEGORIES[catId].questions });
     }
 
-    // ─── Decide (AI recommendation) ───
-    if (path === '/api/decide' && method === 'POST') {
-      const auth = getUser(req);
-      const { category, answers, rejected } = await body(req);
-      if (!category || !CATEGORIES[category]) return send(res, 400, { error: 'Неверная категория' });
+    // Auth: Register
+    if (path === '/api/auth/register' && method === 'POST') {
+      var p = await db();
+      var d = await body(req);
+      if (!d.email || !d.name) return send(res, 400, { error: 'Email и имя обязательны' });
+      var existing = await p.user.findUnique({ where: { email: d.email } });
+      if (existing) return send(res, 409, { error: 'Пользователь уже существует' });
+      if (d.phone) {
+        var phoneExists = await p.user.findUnique({ where: { phone: d.phone } });
+        if (phoneExists) return send(res, 409, { error: 'Этот номер уже зарегистрирован' });
+      }
+      var otp = genOtp();
+      await p.otpCode.create({ data: { email: d.email, code: otp, expiresAt: new Date(Date.now() + 600000) } });
+      console.log('OTP for ' + d.email + ': ' + otp);
+      return send(res, 200, { message: 'Код отправлен', email: d.email });
+    }
 
-      // Check limits for non-pro users
+    // Auth: Login
+    if (path === '/api/auth/login' && method === 'POST') {
+      var p = await db();
+      var d = await body(req);
+      if (!d.email) return send(res, 400, { error: 'Email обязателен' });
+      var user = await p.user.findUnique({ where: { email: d.email } });
+      if (!user) return send(res, 404, { error: 'Пользователь не найден' });
+      var otp = genOtp();
+      await p.otpCode.create({ data: { email: d.email, code: otp, expiresAt: new Date(Date.now() + 600000) } });
+      console.log('OTP for ' + d.email + ': ' + otp);
+      return send(res, 200, { message: 'Код отправлен', email: d.email });
+    }
+
+    // Auth: Verify OTP
+    if (path === '/api/auth/verify' && method === 'POST') {
+      var p = await db();
+      var d = await body(req);
+      if (!d.email || !d.code) return send(res, 400, { error: 'Email и код обязательны' });
+      var otpRec = await p.otpCode.findFirst({
+        where: { email: d.email, code: d.code, used: false, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!otpRec) return send(res, 401, { error: 'Неверный или истекший код' });
+      await p.otpCode.update({ where: { id: otpRec.id }, data: { used: true } });
+      var user = await p.user.findUnique({ where: { email: d.email } });
+      if (!user) {
+        user = await p.user.create({ data: { email: d.email, name: d.name || d.email.split('@')[0], phone: d.phone || null } });
+      }
+      await p.user.update({ where: { id: user.id }, data: { lastActive: new Date() } });
+      var token = jwtSign({ userId: user.id, email: user.email });
+      return send(res, 200, { token: token, user: { id: user.id, name: user.name, email: user.email, isPro: user.isPro, freeRequestsLeft: user.freeRequestsLeft } });
+    }
+
+    // Decide (AI)
+    if (path === '/api/decide' && method === 'POST') {
+      var auth = getUser(req);
+      var d = await body(req);
+      if (!d.category || !CATEGORIES[d.category]) return send(res, 400, { error: 'Неверная категория' });
+
       if (auth) {
-        const user = await prisma.user.findUnique({ where: { id: auth.userId } });
+        var p = await db();
+        var user = await p.user.findUnique({ where: { id: auth.userId } });
         if (user && !user.isPro && user.freeRequestsLeft <= 0) {
-          return send(res, 403, { error: 'Лимит бесплатных запросов исчерпан', code: 'LIMIT_REACHED' });
+          return send(res, 403, { error: 'Лимит исчерпан', code: 'LIMIT_REACHED' });
         }
       }
 
       if (!ANTHROPIC_KEY) {
-        return send(res, 200, { decisionId: crypto.randomUUID(), recommendation: { name: 'API ключ не настроен', desc: 'Добавьте ANTHROPIC_API_KEY', reason: 'Требуется ключ Claude API', tags: ['setup'], alts: [] }, source: 'fallback' });
+        return send(res, 200, { decisionId: crypto.randomUUID(), recommendation: { name: 'API ключ не настроен', desc: 'Добавьте ANTHROPIC_API_KEY в Render', reason: 'Нужен ключ Claude', tags: ['setup'], alts: [] }, source: 'fallback' });
       }
 
-      const preferences = auth ? (await prisma.user.findUnique({ where: { id: auth.userId } }))?.preferences || {} : {};
-      const recommendation = await askClaude(category, answers, preferences, rejected);
-
-      // Save decision + decrement counter
-      let decisionId = crypto.randomUUID();
+      var prefs = {};
       if (auth) {
-        const decision = await prisma.decision.create({
-          data: { id: decisionId, userId: auth.userId, category, answers, recommendation },
-        });
-        decisionId = decision.id;
-        await prisma.user.update({ where: { id: auth.userId }, data: { freeRequestsLeft: { decrement: 1 } } });
+        var p = await db();
+        var u = await p.user.findUnique({ where: { id: auth.userId } });
+        if (u) prefs = u.preferences || {};
       }
+      var recommendation = await askClaude(d.category, d.answers, prefs, d.rejected);
 
-      return send(res, 200, { decisionId, recommendation, source: 'claude' });
+      var decisionId = crypto.randomUUID();
+      if (auth) {
+        var p = await db();
+        var dec = await p.decision.create({ data: { userId: auth.userId, category: d.category, answers: d.answers, recommendation: recommendation } });
+        decisionId = dec.id;
+        await p.user.update({ where: { id: auth.userId }, data: { freeRequestsLeft: { decrement: 1 } } });
+      }
+      return send(res, 200, { decisionId: decisionId, recommendation: recommendation, source: 'claude' });
     }
 
-    // ─── Rate decision ───
-    if (path.startsWith('/api/decisions/') && path.endsWith('/rate') && method === 'POST') {
-      const auth = getUser(req);
-      if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
-      const decisionId = path.split('/')[3];
-      const { rating } = await body(req);
-      if (!rating || rating < 1 || rating > 5) return send(res, 400, { error: 'Рейтинг 1-5' });
-
-      await prisma.decision.update({ where: { id: decisionId, userId: auth.userId }, data: { rating } });
-      return send(res, 200, { success: true });
-    }
-
-    // ─── History ───
-    if (path === '/api/history' && method === 'GET') {
-      const auth = getUser(req);
-      if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
-
-      const limit = parseInt(url.searchParams.get('limit') || '20');
-      const offset = parseInt(url.searchParams.get('offset') || '0');
-      const decisions = await prisma.decision.findMany({
-        where: { userId: auth.userId },
-        orderBy: { createdAt: 'desc' },
-        take: limit, skip: offset,
-      });
-      const total = await prisma.decision.count({ where: { userId: auth.userId } });
-      return send(res, 200, { decisions, total, limit, offset });
-    }
-
-    // ─── Profile ───
+    // Profile
     if (path === '/api/profile' && method === 'GET') {
-      const auth = getUser(req);
+      var auth = getUser(req);
       if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
-
-      const user = await prisma.user.findUnique({ where: { id: auth.userId }, include: { _count: { select: { decisions: true, reviews: true } } } });
-      if (!user) return send(res, 404, { error: 'Пользователь не найден' });
-
-      return send(res, 200, { user: {
-        id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl,
-        isPro: user.isPro, proExpiresAt: user.proExpiresAt, freeRequestsLeft: user.freeRequestsLeft,
-        preferences: user.preferences, createdAt: user.createdAt,
-        stats: { decisions: user._count.decisions, reviews: user._count.reviews },
-      }});
+      var p = await db();
+      var user = await p.user.findUnique({ where: { id: auth.userId }, include: { _count: { select: { decisions: true, reviews: true } } } });
+      if (!user) return send(res, 404, { error: 'Не найден' });
+      return send(res, 200, { user: { id: user.id, name: user.name, email: user.email, isPro: user.isPro, proExpiresAt: user.proExpiresAt, freeRequestsLeft: user.freeRequestsLeft, preferences: user.preferences, createdAt: user.createdAt, stats: { decisions: user._count.decisions, reviews: user._count.reviews } } });
     }
-
     if (path === '/api/profile' && method === 'PUT') {
-      const auth = getUser(req);
+      var auth = getUser(req);
       if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
-      const { name, preferences } = await body(req);
-      const data = {};
-      if (name) data.name = name;
-      if (preferences) data.preferences = preferences;
-      const user = await prisma.user.update({ where: { id: auth.userId }, data });
+      var p = await db();
+      var d = await body(req);
+      var data = {};
+      if (d.name) data.name = d.name;
+      if (d.preferences) data.preferences = d.preferences;
+      var user = await p.user.update({ where: { id: auth.userId }, data: data });
       return send(res, 200, { user: { id: user.id, name: user.name, preferences: user.preferences } });
     }
 
-    // ─── Voting: Create room ───
-    if (path === '/api/voting/create' && method === 'POST') {
-      const auth = getUser(req);
+    // History
+    if (path === '/api/history' && method === 'GET') {
+      var auth = getUser(req);
       if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
-      const { category, options } = await body(req);
-      if (!category || !options?.length) return send(res, 400, { error: 'Категория и варианты обязательны' });
+      var p = await db();
+      var limit = parseInt(url.searchParams.get('limit') || '20');
+      var offset = parseInt(url.searchParams.get('offset') || '0');
+      var decisions = await p.decision.findMany({ where: { userId: auth.userId }, orderBy: { createdAt: 'desc' }, take: limit, skip: offset });
+      var total = await p.decision.count({ where: { userId: auth.userId } });
+      return send(res, 200, { decisions: decisions, total: total });
+    }
 
-      const room = await prisma.votingRoom.create({
-        data: { creatorId: auth.userId, category, options, expiresAt: new Date(Date.now() + 24 * 3600000) },
-      });
+    // Stats
+    if (path === '/api/stats' && method === 'GET') {
+      var auth = getUser(req);
+      if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
+      var p = await db();
+      var decisions = await p.decision.findMany({ where: { userId: auth.userId }, select: { category: true, rating: true, createdAt: true } });
+      var byCategory = {};
+      decisions.forEach(function(d) { byCategory[d.category] = (byCategory[d.category] || 0) + 1; });
+      var rated = decisions.filter(function(d) { return d.rating; });
+      var avg = rated.length ? rated.reduce(function(s, d) { return s + d.rating; }, 0) / rated.length : 0;
+      return send(res, 200, { total: decisions.length, byCategory: byCategory, avgRating: Math.round(avg * 10) / 10 });
+    }
+
+    // Voting: Create
+    if (path === '/api/voting/create' && method === 'POST') {
+      var auth = getUser(req);
+      if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
+      var p = await db();
+      var d = await body(req);
+      if (!d.category || !d.options || !d.options.length) return send(res, 400, { error: 'Категория и варианты обязательны' });
+      var room = await p.votingRoom.create({ data: { creatorId: auth.userId, category: d.category, options: d.options, expiresAt: new Date(Date.now() + 86400000) } });
       return send(res, 200, { room: { id: room.id, inviteCode: room.inviteCode, expiresAt: room.expiresAt } });
     }
 
-    // ─── Voting: Join + Vote ───
-    if (path.startsWith('/api/voting/') && path.endsWith('/vote') && method === 'POST') {
-      const auth = getUser(req);
+    // Voting: Vote
+    if (path.match(/^\/api\/voting\/[^/]+\/vote$/) && method === 'POST') {
+      var auth = getUser(req);
       if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
-      const inviteCode = path.split('/')[3];
-      const { optionIndex } = await body(req);
-
-      const room = await prisma.votingRoom.findUnique({ where: { inviteCode } });
+      var p = await db();
+      var inviteCode = path.split('/')[3];
+      var d = await body(req);
+      var room = await p.votingRoom.findUnique({ where: { inviteCode: inviteCode } });
       if (!room) return send(res, 404, { error: 'Комната не найдена' });
       if (room.status !== 'active') return send(res, 400, { error: 'Голосование завершено' });
-
-      await prisma.vote.upsert({
-        where: { roomId_userId: { roomId: room.id, userId: auth.userId } },
-        create: { roomId: room.id, userId: auth.userId, optionIndex },
-        update: { optionIndex },
-      });
-
-      const votes = await prisma.vote.findMany({ where: { roomId: room.id } });
-      return send(res, 200, { votes: votes.length, results: votes.map(v => v.optionIndex) });
+      await p.vote.upsert({ where: { roomId_userId: { roomId: room.id, userId: auth.userId } }, create: { roomId: room.id, userId: auth.userId, optionIndex: d.optionIndex }, update: { optionIndex: d.optionIndex } });
+      var votes = await p.vote.findMany({ where: { roomId: room.id } });
+      return send(res, 200, { votes: votes.length, results: votes.map(function(v) { return v.optionIndex; }) });
     }
 
-    // ─── Voting: Get room ───
-    if (path.startsWith('/api/voting/') && method === 'GET') {
-      const inviteCode = path.split('/').pop();
-      const room = await prisma.votingRoom.findUnique({ where: { inviteCode }, include: { votes: true, creator: { select: { name: true } } } });
+    // Voting: Get room
+    if (path.match(/^\/api\/voting\/[^/]+$/) && method === 'GET') {
+      var p = await db();
+      var inviteCode = path.split('/').pop();
+      var room = await p.votingRoom.findUnique({ where: { inviteCode: inviteCode }, include: { votes: true, creator: { select: { name: true } } } });
       if (!room) return send(res, 404, { error: 'Комната не найдена' });
-      return send(res, 200, { room });
+      return send(res, 200, { room: room });
     }
 
-    // ─── Subscription: Activate PRO ───
+    // Subscription
     if (path === '/api/subscription/activate' && method === 'POST') {
-      const auth = getUser(req);
+      var auth = getUser(req);
       if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
-      const { plan, provider, providerId } = await body(req);
-
-      const expiresAt = plan === 'year'
-        ? new Date(Date.now() + 365 * 86400000)
-        : new Date(Date.now() + 30 * 86400000);
-
-      await prisma.user.update({ where: { id: auth.userId }, data: { isPro: true, proExpiresAt: expiresAt, freeRequestsLeft: 999999 } });
-      await prisma.subscription.create({ data: { userId: auth.userId, provider: provider || 'manual', providerId: providerId || crypto.randomUUID(), plan: plan || 'month', currentPeriodEnd: expiresAt } });
-
+      var p = await db();
+      var d = await body(req);
+      var expiresAt = d.plan === 'year' ? new Date(Date.now() + 365 * 86400000) : new Date(Date.now() + 30 * 86400000);
+      await p.user.update({ where: { id: auth.userId }, data: { isPro: true, proExpiresAt: expiresAt, freeRequestsLeft: 999999 } });
+      await p.subscription.create({ data: { userId: auth.userId, provider: d.provider || 'manual', providerId: d.providerId || crypto.randomUUID(), plan: d.plan || 'month', currentPeriodEnd: expiresAt } });
       return send(res, 200, { success: true, proExpiresAt: expiresAt });
     }
 
-    // ─── Stats (for analytics) ───
-    if (path === '/api/stats' && method === 'GET') {
-      const auth = getUser(req);
-      if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
-
-      const decisions = await prisma.decision.findMany({ where: { userId: auth.userId }, select: { category: true, rating: true, createdAt: true } });
-      const byCategory = {};
-      decisions.forEach(d => { byCategory[d.category] = (byCategory[d.category] || 0) + 1; });
-      const avgRating = decisions.filter(d => d.rating).reduce((sum, d) => sum + d.rating, 0) / (decisions.filter(d => d.rating).length || 1);
-
-      return send(res, 200, {
-        total: decisions.length,
-        byCategory,
-        avgRating: Math.round(avgRating * 10) / 10,
-        thisWeek: decisions.filter(d => d.createdAt > new Date(Date.now() - 7 * 86400000)).length,
-      });
-    }
-
-    // ─── 404 ───
     send(res, 404, { error: 'Endpoint не найден' });
-
   } catch (err) {
     console.error('Error:', err.message);
     send(res, 500, { error: 'Внутренняя ошибка сервера' });
   }
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log(`Reshalka API v1.0 on port ${PORT}`));
+server.listen(PORT, '0.0.0.0', function() {
+  console.log('Reshalka API v1.0 on port ' + PORT);
+});
