@@ -1,0 +1,19 @@
+{
+  "name": "Решалка — AI-помощник выбора",
+  "short_name": "Решалка",
+  "description": "AI помогает определиться за 30 секунд",
+  "start_url": "/app",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#E8593C",
+  "orientation": "portrait",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
