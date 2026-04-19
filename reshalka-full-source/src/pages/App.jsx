@@ -134,12 +134,8 @@ async function askClaudeAI(catId, answers, rejected=[]){
   }
 }
 
-/* ─── Recent decisions (mock history) ─── */
-const HISTORY=[
-  {id:"1",cat:"fun",name:"Квест «Тайная комната»",when:"Вчера",with:"с друзьями",rating:4.8},
-  {id:"2",cat:"movie",name:"Интерстеллар",when:"3 дня назад",with:"один",rating:5.0},
-  {id:"3",cat:"food",name:"Рамен изакая",when:"Неделю назад",with:"с партнёром",rating:4.5},
-];
+/* ─── Recent decisions (loads from API) ─── */
+const HISTORY_EMPTY=[];
 
 /* ─── Loading messages ─── */
 const LOAD_MSGS=["Анализирую ваши ответы...","Ищу лучший вариант...","Генерирую рекомендацию...","Почти готово..."];
@@ -157,13 +153,13 @@ export default function Reshalka(){
   const [liked,setLiked]=useState(false);
   const [tab,setTab]=useState("home");
   const [anim,setAnim]=useState(true);
-  const [history,setHistory]=useState(HISTORY);
+  const [history,setHistory]=useState([]);
   const [toast,setToast]=useState(null);
   const [rejected,setRejected]=useState([]);
   const [loadMsg,setLoadMsg]=useState(0);
   const [aiSource,setAiSource]=useState("");
   const [isPro,setIsPro]=useState(false);
-  const [usedReqs,setUsedReqs]=useState(3);
+  const [usedReqs,setUsedReqs]=useState(0);
   const [showPaywall,setShowPaywall]=useState(false);
   const [billingPeriod,setBillingPeriod]=useState("year");
   /* Auth state */
@@ -171,6 +167,7 @@ export default function Reshalka(){
   const [authEmail,setAuthEmail]=useState("");
   const [authPhone,setAuthPhone]=useState("");
   const [authName,setAuthName]=useState("");
+  const [userName,setUserName]=useState("");
   const [authOtp,setAuthOtp]=useState(["","","",""]);
   const [authError,setAuthError]=useState("");
   const [authLoading,setAuthLoading]=useState(false);
@@ -188,10 +185,19 @@ export default function Reshalka(){
     if (token) {
       api('/api/profile').then(data => {
         if (data.user) {
-          setIsLoggedIn(true); setScreen("home"); setAuthName(data.user.name);
-          setIsPro(data.user.isPro); setUsedReqs(5 - (data.user.freeRequestsLeft || 0));
+          setIsLoggedIn(true); setScreen("home"); setUserName(data.user.name); setAuthName(data.user.name);
+          setIsPro(data.user.isPro); setUsedReqs(Math.max(0, 5 - (data.user.freeRequestsLeft || 0)));
         }
       }).catch(() => { clearToken(); });
+      api('/api/history?limit=10').then(data => {
+        if (data.decisions) {
+          setHistory(data.decisions.map(d => {
+            const r = d.recommendation || {};
+            const ago = Math.floor((Date.now() - new Date(d.createdAt).getTime()) / 86400000);
+            return { id: d.id, cat: d.category, name: r.name || 'Решение', when: ago === 0 ? 'Сегодня' : ago === 1 ? 'Вчера' : ago + ' дн. назад', with: '', rating: d.rating || 0 };
+          }));
+        }
+      }).catch(() => {});
     }
   }, []);
 
@@ -265,8 +271,11 @@ export default function Reshalka(){
     try {
       const data = await api('/api/auth/verify', { method: 'POST', body: JSON.stringify({ email: authEmail, code, name: authName, phone: authPhone ? formatPhone(authPhone) : undefined }) });
       setToken(data.token);
-      setIsLoggedIn(true); setScreen("home"); setToast("Добро пожаловать, " + (data.user?.name || "") + "!");
-      if (data.user) { setIsPro(data.user.isPro); setUsedReqs(5 - (data.user.freeRequestsLeft || 0)); }
+      setIsLoggedIn(true); setScreen("home"); 
+      const uName = data.user?.name || authName || "Пользователь";
+      setUserName(uName);
+      setToast("Добро пожаловать, " + uName + "!");
+      if (data.user) { setIsPro(data.user.isPro); setUsedReqs(Math.max(0, 5 - (data.user.freeRequestsLeft || 0))); }
     } catch (err) { setAuthError(err.message); }
     setAuthLoading(false);
   };
@@ -460,7 +469,7 @@ export default function Reshalka(){
                   <h1 style={{fontFamily:"'Outfit'",fontSize:28,fontWeight:800,color:C.n950,letterSpacing:-.8}}>Что решаем?</h1>
                 </div>
                 <div style={$.avatar} onClick={()=>{setTab("user");go("profile");}}>
-                  <span style={{color:"#fff",fontSize:15,fontWeight:700,fontFamily:"'Outfit'"}}>ДК</span>
+                  <span style={{color:"#fff",fontSize:15,fontWeight:700,fontFamily:"'Outfit'"}}>{(userName||"?")[0]}</span>
                 </div>
               </div>
 
@@ -652,14 +661,14 @@ export default function Reshalka(){
               <button onClick={goHome} aria-label="Назад" style={$.backBtn}><I name="arrowL" size={20} color={C.n950}/></button>
               <div style={{textAlign:"center",marginBottom:24}}>
                 <div style={{position:"relative",width:72,height:72,margin:"0 auto 12px"}}>
-                  <div style={{...$.avatar,width:72,height:72}}><span style={{color:"#fff",fontSize:22,fontWeight:700,fontFamily:"'Outfit'"}}>ДК</span></div>
+                  <div style={{...$.avatar,width:72,height:72}}><span style={{color:"#fff",fontSize:22,fontWeight:700,fontFamily:"'Outfit'"}}>{(userName||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase()}</span></div>
                   {isPro&&<div style={{position:"absolute",bottom:-2,right:-2,width:24,height:24,borderRadius:12,background:"linear-gradient(135deg,#E8593C,#D4537E)",border:"2.5px solid #fff",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="sparkle" size={11} color="#fff"/></div>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-                  <h2 style={{fontFamily:"'Outfit'",fontSize:22,fontWeight:700,color:C.n950}}>Дмитрий К.</h2>
+                  <h2 style={{fontFamily:"'Outfit'",fontSize:22,fontWeight:700,color:C.n950}}>{userName||"Пользователь"}</h2>
                   {isPro&&<span style={{fontSize:10,fontWeight:700,color:"#fff",background:"linear-gradient(135deg,#E8593C,#D4537E)",padding:"2px 8px",borderRadius:10}}>PRO</span>}
                 </div>
-                <p style={{fontSize:13,color:C.n400,marginTop:2}}>Пользуется с марта 2026</p>
+                <p style={{fontSize:13,color:C.n400,marginTop:2}}>Пользователь Решалки</p>
               </div>
 
               {/* Subscription card */}
@@ -684,7 +693,7 @@ export default function Reshalka(){
               )}
 
               <div style={{display:"flex",gap:10,marginBottom:24}}>
-                {[{n:history.length,l:"Решений"},{n:"12",l:"Обзоров"},{n:"8",l:"Друзей"}].map((s,i)=>(
+                {[{n:history.length,l:"Решений"},{n:"0",l:"Обзоров"},{n:"0",l:"Друзей"}].map((s,i)=>(
                   <div key={i} style={$.statCard}>
                     <p style={{fontSize:22,fontWeight:700,fontFamily:"'Outfit'",color:C.n950}}>{s.n}</p>
                     <p style={{fontSize:11,color:C.n400,fontWeight:500,marginTop:2}}>{s.l}</p>
