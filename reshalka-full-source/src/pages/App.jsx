@@ -342,7 +342,7 @@ export default function Reshalka(){
   const greeting=hour<6?"Доброй ночи":hour<12?"Доброе утро":hour<18?"Добрый день":"Добрый вечер";
 
   return(
-    <div style={$.root}>
+    <div style={$.root} id="reshalka-root">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -354,11 +354,23 @@ export default function Reshalka(){
         @keyframes toast{0%{opacity:0;transform:translateY(20px)}10%{opacity:1;transform:translateY(0)}90%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-10px)}}
         @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
         .opt-btn:active{transform:scale(.97)!important;background:${C.n100}!important}
+        @media(max-width:500px){
+          #reshalka-root{padding:0!important;background:#fff!important;align-items:stretch!important}
+          #reshalka-phone{width:100%!important;height:100vh!important;height:100dvh!important;border-radius:0!important;box-shadow:none!important}
+          #reshalka-statusbar{display:none!important}
+          #reshalka-homebar{display:none!important}
+        }
+        @media(display-mode:standalone){
+          #reshalka-root{padding:0!important;background:#fff!important;align-items:stretch!important}
+          #reshalka-phone{width:100%!important;height:100vh!important;height:100dvh!important;border-radius:0!important;box-shadow:none!important}
+          #reshalka-statusbar{display:none!important}
+          #reshalka-homebar{display:none!important}
+        }
       `}</style>
 
-      <div style={$.phone}>
+      <div style={$.phone} id="reshalka-phone">
         {/* Status bar */}
-        <div style={$.statusBar}>
+        <div style={$.statusBar} id="reshalka-statusbar">
           <span style={$.statusTime}>
             {new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false})}
           </span>
@@ -930,7 +942,7 @@ export default function Reshalka(){
             );
           })}
         </div>
-        <div style={{width:134,height:5,borderRadius:3,background:C.n950,margin:"6px auto 8px",flexShrink:0}}/></>}
+        <div id="reshalka-homebar" style={{width:134,height:5,borderRadius:3,background:C.n950,margin:"6px auto 8px",flexShrink:0}}/></>}
 
         {/* Toast */}
         <div aria-live="polite" aria-atomic="true">{toast&&<div style={$.toast}>{toast}</div>}</div>
@@ -987,7 +999,7 @@ export default function Reshalka(){
 /* ─── Styles ─── */
 const $={
   root:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px",fontFamily:"'DM Sans',-apple-system,sans-serif",background:"linear-gradient(145deg,#f5f4f1 0%,#e8e6e1 100%)"},
-  phone:{width:375,height:812,background:"#fff",borderRadius:44,overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.12),0 2px 6px rgba(0,0,0,.06),inset 0 0 0 .5px rgba(0,0,0,.08)",position:"relative",display:"flex",flexDirection:"column"},
+  phone:{width:375,height:812,background:"#fff",borderRadius:44,overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.12),0 2px 6px rgba(0,0,0,.06),inset 0 0 0 .5px rgba(0,0,0,.08)",position:"relative",display:"flex",flexDirection:"column",paddingTop:"env(safe-area-inset-top,0)",paddingBottom:"env(safe-area-inset-bottom,0)"},
   statusBar:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 28px 6px",flexShrink:0},
   statusTime:{fontSize:15,fontWeight:600,color:C.n950,fontFamily:"'Outfit'"},
   content:{flex:1,overflowY:"auto",overflowX:"hidden",WebkitOverflowScrolling:"touch"},
