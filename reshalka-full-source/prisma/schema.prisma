@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  phone           String?    @unique
+  name            String
+  avatarUrl       String?
+  preferences     Json       @default("{}")
+  isPro           Boolean    @default(false)
+  proExpiresAt    DateTime?
+  freeRequestsLeft Int       @default(5)
+  createdAt       DateTime   @default(now())
+  lastActive      DateTime   @updatedAt
+  decisions       Decision[]
+  reviews         Review[]
+  votingRooms     VotingRoom[] @relation("creator")
+  votes           Vote[]
+}
+
+model Decision {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  category       String
+  answers        Json
+  recommendation Json
+  rating         Int?
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model Item {
+  id          String   @id @default(uuid())
+  category    String
+  name        String
+  description String?
+  location    Json?
+  photos      String[] @default([])
+  tags        String[] @default([])
+  source      String   @default("system")
+  avgRating   Float    @default(0)
+  reviewCount Int      @default(0)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  reviews     Review[]
+
+  @@index([category])
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id])
+  rating     Int
+  text       String?
+  photos     String[] @default([])
+  likesCount Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, itemId])
+}
+
+model VotingRoom {
+  id          String   @id @default(uuid())
+  creatorId   String
+  creator     User     @relation("creator", fields: [creatorId], references: [id])
+  category    String
+  inviteCode  String   @unique @default(uuid())
+  status      String   @default("active")
+  options     Json     @default("[]")
+  result      Json?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  votes       Vote[]
+}
+
+model Vote {
+  id           String     @id @default(uuid())
+  roomId       String
+  room         VotingRoom @relation(fields: [roomId], references: [id])
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  optionIndex  Int
+  createdAt    DateTime   @default(now())
+
+  @@unique([roomId, userId])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, code])
+}
+
+model Subscription {
+  id             String   @id @default(uuid())
+  userId         String
+  provider       String
+  providerId     String
+  plan           String
+  status         String   @default("active")
+  currentPeriodEnd DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+}
