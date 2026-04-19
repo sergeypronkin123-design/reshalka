@@ -293,6 +293,27 @@ const server = http.createServer(async function(req, res) {
       return send(res, 200, { success: true, proExpiresAt: expiresAt });
     }
 
+    // Rate decision
+    if (path.match(/^\/api\/decisions\/[^/]+\/rate$/) && method === 'POST') {
+      var auth = getUser(req);
+      if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
+      var p = await db();
+      var decisionId = path.split('/')[3];
+      var d = await body(req);
+      if (!d.rating || d.rating < 1 || d.rating > 5) return send(res, 400, { error: 'Рейтинг 1-5' });
+      await p.decision.update({ where: { id: decisionId, userId: auth.userId }, data: { rating: d.rating } });
+      return send(res, 200, { success: true });
+    }
+
+    // Referral: grant bonus requests
+    if (path === '/api/referral/claim' && method === 'POST') {
+      var auth = getUser(req);
+      if (!auth) return send(res, 401, { error: 'Требуется авторизация' });
+      var p = await db();
+      await p.user.update({ where: { id: auth.userId }, data: { freeRequestsLeft: { increment: 3 } } });
+      return send(res, 200, { success: true, message: '+3 бесплатных решения' });
+    }
+
     send(res, 404, { error: 'Endpoint не найден' });
   } catch (err) {
     console.error('Error:', err.message);
