@@ -117,10 +117,18 @@ function clearToken() { try { localStorage.removeItem('reshalka_token'); } catch
 async function api(path, options = {}) {
   const token = getToken();
   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
-  const res = await fetch(`${API_URL}${path}`, { ...options, headers: { ...headers, ...options.headers } });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'API error');
-  return data;
+  try {
+    const res = await fetch(`${API_URL}${path}`, { ...options, headers: { ...headers, ...options.headers } });
+    if (res.status === 401) { clearToken(); throw new Error('Сессия истекла. Войдите заново.'); }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Ошибка сервера');
+    return data;
+  } catch (err) {
+    if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+      throw new Error('Нет подключения к серверу. Проверьте интернет.');
+    }
+    throw err;
+  }
 }
 
 async function askClaudeAI(catId, answers, rejected=[]){
@@ -792,12 +800,40 @@ export default function Reshalka(){
                 ))}
               </div>
 
+              {/* Invite friends */}
+              <div className="rsh-card" style={{padding:"16px 18px",background:C.azureL,border:`0.5px solid ${C.azure}30`,borderRadius:16,marginBottom:20}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <I name="users" size={18} color={C.azure}/>
+                  <p style={{fontSize:15,fontWeight:600,color:C.azure}}>Пригласите друзей</p>
+                </div>
+                <p style={{fontSize:13,color:C.azure,lineHeight:1.4,marginBottom:12}}>За каждого друга — +3 бесплатных AI-решения</p>
+                <button onClick={async()=>{
+                  const link="https://reshalka.onrender.com/app";
+                  const text="Попробуй Решалку — AI подбирает фильмы, рестораны и досуг за 30 секунд: "+link;
+                  try{if(navigator.share)await navigator.share({title:"Решалка",text});else{await navigator.clipboard.writeText(text);setToast("Ссылка скопирована!");}}catch{setToast("Ссылка скопирована!");}
+                }} style={{width:"100%",padding:"12px",background:C.azure,color:"#fff",borderRadius:12,border:"none",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                  <I name="share" size={16} color="#fff"/>Поделиться ссылкой
+                </button>
+              </div>
+
               {/* Analytics (PRO only) */}
-              {isPro&&<>
+              {isPro&&history.length>0&&(()=>{
+                const cats={movie:0,food:0,fun:0,gift:0};
+                history.forEach(h=>{if(cats[h.cat]!==undefined)cats[h.cat]++;});
+                const total=history.length||1;
+                const data=[
+                  {label:"Фильмы",pct:Math.round(cats.movie/total*100),c:C.coral},
+                  {label:"Еда",pct:Math.round(cats.food/total*100),c:C.emerald},
+                  {label:"Досуг",pct:Math.round(cats.fun/total*100),c:C.azure},
+                  {label:"Подарки",pct:Math.round(cats.gift/total*100),c:C.rose},
+                ].filter(d=>d.pct>0);
+                const rated=history.filter(h=>h.rating>0);
+                const avgR=rated.length?Math.round(rated.reduce((s,h)=>s+h.rating,0)/rated.length*10)/10:0;
+                return <>
                 <p className="rsh-secl" style={$.secLabel}>Аналитика вкусов</p>
-                <div style={{padding:"16px",background:C.n50,border:`0.5px solid ${C.n200}`,borderRadius:16,marginBottom:20}}>
-                  {[{label:"Фильмы",pct:38,c:C.coral},{label:"Еда",pct:28,c:C.emerald},{label:"Досуг",pct:22,c:C.azure},{label:"Подарки",pct:12,c:C.rose}].map((a,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<3?10:0}}>
+                <div className="rsh-card" style={{padding:"16px",background:C.n50,border:`0.5px solid ${C.n200}`,borderRadius:16,marginBottom:20}}>
+                  {data.map((a,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<data.length-1?10:0}}>
                       <span style={{fontSize:12,fontWeight:600,color:C.n950,minWidth:56}}>{a.label}</span>
                       <div style={{flex:1,height:8,borderRadius:4,background:C.n100}}>
                         <div style={{height:8,borderRadius:4,background:a.c,width:`${a.pct}%`,transition:"width .6s ease"}}/>
@@ -808,15 +844,16 @@ export default function Reshalka(){
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
                   <div style={$.statCard}>
-                    <p style={{fontSize:11,color:C.n400,fontWeight:500,marginBottom:4}}>Точность AI</p>
-                    <p style={{fontSize:22,fontWeight:700,fontFamily:"'Outfit'",color:C.emerald}}>87%</p>
+                    <p style={{fontSize:11,color:C.n400,fontWeight:500,marginBottom:4}}>Средняя оценка</p>
+                    <p style={{fontSize:22,fontWeight:700,fontFamily:"'Outfit'",color:C.emerald}}>{avgR||"—"}</p>
                   </div>
                   <div style={$.statCard}>
-                    <p style={{fontSize:11,color:C.n400,fontWeight:500,marginBottom:4}}>Время экономии</p>
-                    <p style={{fontSize:22,fontWeight:700,fontFamily:"'Outfit'",color:C.azure}}>4.2ч</p>
+                    <p style={{fontSize:11,color:C.n400,fontWeight:500,marginBottom:4}}>Решений всего</p>
+                    <p style={{fontSize:22,fontWeight:700,fontFamily:"'Outfit'",color:C.azure}}>{history.length}</p>
                   </div>
                 </div>
-              </>}
+                </>;
+              })()}
 
               <p className="rsh-secl" style={$.secLabel}>Настройки</p>
               <div style={{padding:"14px 16px",background:dark?"#2c2c2e":C.n50,border:`0.5px solid ${dark?"#3a3a3c":C.n200}`,borderRadius:14,marginBottom:20}}>
@@ -1050,7 +1087,12 @@ export default function Reshalka(){
               ))}
             </div>
 
-            <button onClick={()=>{setIsPro(true);setShowPaywall(false);setToast("Добро пожаловать в PRO!");}} style={{width:"100%",padding:"16px",background:C.coral,color:"#fff",borderRadius:16,border:"none",fontSize:16,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 4px 20px rgba(232,89,60,.3)",transition:"all .2s",marginBottom:8}}>
+            <button onClick={async()=>{
+              try{
+                await api('/api/subscription/activate',{method:'POST',body:JSON.stringify({plan:billingPeriod,provider:'web'})});
+                setIsPro(true);setShowPaywall(false);setUsedReqs(0);setToast("Добро пожаловать в PRO!");
+              }catch(e){setToast("Ошибка: "+e.message);}
+            }} style={{width:"100%",padding:"16px",background:C.coral,color:"#fff",borderRadius:16,border:"none",fontSize:16,fontWeight:700,fontFamily:"inherit",cursor:"pointer",boxShadow:"0 4px 20px rgba(232,89,60,.3)",transition:"all .2s",marginBottom:8}}>
               Оформить подписку
             </button>
             <button onClick={()=>setShowPaywall(false)} style={{width:"100%",padding:"12px",background:"none",border:"none",fontSize:14,color:C.n400,cursor:"pointer",fontFamily:"inherit"}}>
