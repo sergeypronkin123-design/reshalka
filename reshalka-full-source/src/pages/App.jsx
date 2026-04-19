@@ -414,13 +414,28 @@ export default function Reshalka(){
           {/* ═══ AUTH: WELCOME ═══ */}
           {!isLoggedIn&&authStep==="welcome"&&(
             <div style={{...$.pad,display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"100%",animation:anim?"fi .5s ease":"none"}}>
-              <div style={{textAlign:"center",marginBottom:48}}>
+              <div style={{textAlign:"center",marginBottom:32}}>
                 <div style={{width:80,height:80,borderRadius:24,background:"linear-gradient(135deg,#E8593C,#D4537E)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",boxShadow:"0 8px 32px rgba(232,89,60,.3)"}}><I name="sparkle" size={36} color="#fff"/></div>
                 <h1 style={{fontFamily:"'Outfit'",fontSize:32,fontWeight:900,color:C.n950,letterSpacing:-1,marginBottom:8}}>Решалка</h1>
-                <p style={{fontSize:15,color:C.n400,lineHeight:1.5}}>AI-помощник повседневного выбора</p>
+                <p style={{fontSize:15,color:C.n400,lineHeight:1.5}}>Перестань мучить себя выбором</p>
               </div>
+
+              {/* Benefits */}
+              <div style={{marginBottom:28}}>
+                {[
+                  {icon:"sparkle",text:"AI подберёт идеальный вариант за 30 секунд",color:C.coral},
+                  {icon:"film",text:"Фильмы, рестораны, досуг, подарки",color:C.azure},
+                  {icon:"vote",text:"Решайте вместе с друзьями",color:C.emerald},
+                ].map((b,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",animation:`su .4s ease ${(i+1)*100}ms both`}}>
+                    <div style={{width:36,height:36,borderRadius:10,background:b.color+"18",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><I name={b.icon} size={16} color={b.color}/></div>
+                    <p style={{fontSize:14,color:C.n600,lineHeight:1.4}}>{b.text}</p>
+                  </div>
+                ))}
+              </div>
+
               <button onClick={()=>{setIsLogin(false);setAuthStep("register");setAuthError("");}} style={{width:"100%",padding:"16px",background:C.coral,color:"#fff",borderRadius:16,border:"none",fontSize:16,fontWeight:700,fontFamily:"inherit",cursor:"pointer",marginBottom:10,boxShadow:"0 4px 20px rgba(232,89,60,.25)"}}>
-                Создать аккаунт
+                Начать бесплатно
               </button>
               <button onClick={()=>{setIsLogin(true);setAuthStep("register");setAuthError("");}} style={{width:"100%",padding:"16px",background:C.n50,color:C.n950,borderRadius:16,border:`0.5px solid ${C.n200}`,fontSize:16,fontWeight:600,fontFamily:"inherit",cursor:"pointer"}}>
                 Уже есть аккаунт
@@ -506,7 +521,7 @@ export default function Reshalka(){
             <div style={{...$.pad,animation:anim?"fi .4s ease":"none"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
                 <div>
-                  <p style={{fontSize:14,color:C.n400,fontWeight:500}}>{greeting}</p>
+                  <p style={{fontSize:14,color:C.n400,fontWeight:500}}>{greeting}{userName?", "+userName.split(" ")[0]:""}</p>
                   <h1 style={{fontFamily:"'Outfit'",fontSize:28,fontWeight:800,color:C.n950,letterSpacing:-.8}}>Что решаем?</h1>
                 </div>
                 <div style={$.avatar} onClick={()=>{setTab("user");go("profile");}}>
@@ -546,6 +561,12 @@ export default function Reshalka(){
 
               {/* Categories */}
               <p className="rsh-secl" style={$.secLabel}>Категории</p>
+              {history.length===0&&(
+                <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:C.azureL,borderRadius:12,marginBottom:12}}>
+                  <I name="sparkle" size={16} color={C.azure}/>
+                  <p style={{fontSize:12,color:C.azure,lineHeight:1.4,flex:1}}>Выберите категорию → ответьте на 3 вопроса → AI подберёт идеальный вариант</p>
+                </div>
+              )}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:28}}>
                 {CATS.map((c,i)=>{
                   const cc=CAT_COLORS[c.id];
@@ -676,7 +697,10 @@ export default function Reshalka(){
                     <button aria-label={liked?"Убрать из избранного":"В избранное"} style={{...$.circleBtn,background:liked?C.coral:C.n100}} onClick={()=>{setLiked(!liked);if(!liked)saveDecision();}}>
                       <I name="heart" size={20} color={liked?"#fff":C.n400} fill={liked?"#fff":"none"} sw={liked?0:1.5}/>
                     </button>
-                    <button style={{...$.primaryBtn,background:accent,flex:1}} onClick={()=>{setToast("Ссылка скопирована");}}> 
+                    <button style={{...$.primaryBtn,background:accent,flex:1}} onClick={async()=>{
+                      const text=`${rec.name} — ${rec.desc}\n\nРекомендация от Решалки: reshalka.onrender.com/app`;
+                      try{if(navigator.share){await navigator.share({title:"Решалка: "+rec.name,text});}else{await navigator.clipboard.writeText(text);setToast("Скопировано!");}}catch{setToast("Скопировано!");}
+                    }}> 
                       <I name="share" size={17} color="#fff"/><span>Поделиться</span>
                     </button>
                     <button aria-label="Другой вариант" style={$.circleBtn} onClick={regenerate}>
@@ -704,8 +728,18 @@ export default function Reshalka(){
 
                   {/* Your answers */}
                   <p style={{...$.secLabel,marginTop:16}}>Ваши ответы</p>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
                     {answers.map((a,i)=><span key={i} style={{...$.tag,borderColor:accent+"30",color:accent}}>{a.answer}</span>)}
+                  </div>
+
+                  {/* Bottom actions */}
+                  <div style={{display:"flex",gap:10}}>
+                    <button onClick={goHome} style={{flex:1,padding:"14px",background:C.n50,border:`0.5px solid ${C.n200}`,borderRadius:14,fontSize:14,fontWeight:600,color:C.n950,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                      <I name="home" size={16} color={C.n400}/>На главную
+                    </button>
+                    <button onClick={()=>pickCat(cat)} style={{flex:1,padding:"14px",background:accent,borderRadius:14,border:"none",fontSize:14,fontWeight:600,color:"#fff",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                      <I name="refresh" size={16} color="#fff"/>Ещё раз
+                    </button>
                   </div>
                 </>
               ):null}
