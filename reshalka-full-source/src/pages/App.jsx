@@ -188,6 +188,10 @@ export default function Reshalka(){
   const [authLoading,setAuthLoading]=useState(false);
   const [isLoggedIn,setIsLoggedIn]=useState(false);
   const [isLogin,setIsLogin]=useState(false);
+  const [votingRooms,setVotingRooms]=useState([]);
+  const [showCreateVoting,setShowCreateVoting]=useState(false);
+  const [votingCat,setVotingCat]=useState(null);
+  const [searchQ,setSearchQ]=useState("");
   const contentRef=useRef(null);
 
   useEffect(()=>{setAnim(false);requestAnimationFrame(()=>setAnim(true));},[screen,qIdx,authStep]);
@@ -816,81 +820,54 @@ export default function Reshalka(){
             </div>
           )}
 
-          {/* ═══ EXPLORE ═══ */}}
+          {/* ═══ EXPLORE ═══ */}
           {isLoggedIn&&screen==="explore"&&(
             <div style={{...$.pad,animation:anim?"fi .4s ease":"none"}}>
               <h1 style={{fontFamily:"'Outfit'",fontSize:28,fontWeight:800,color:C.n950,letterSpacing:-.8,marginBottom:20}}>Обзор</h1>
 
               {/* Search */}
-              <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:C.n50,border:`0.5px solid ${C.n200}`,borderRadius:14,marginBottom:24}}>
+              <div className="rsh-card" style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:C.n50,border:`0.5px solid ${C.n200}`,borderRadius:14,marginBottom:24}}>
                 <I name="search" size={18} color={C.n400}/>
-                <span style={{fontSize:15,color:C.n400}}>Поиск мест, фильмов, идей...</span>
+                <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Поиск мест, фильмов, идей..." style={{flex:1,border:"none",background:"transparent",fontSize:15,fontFamily:"inherit",outline:"none",color:C.n950}}/>
+                {searchQ&&<button onClick={()=>setSearchQ("")} style={{background:"none",border:"none",cursor:"pointer"}}><I name="x" size={16} color={C.n400}/></button>}
               </div>
 
-              {/* Trending */}
-              <p className="rsh-secl" style={$.secLabel}>Популярное сейчас</p>
-              {[
-                {cat:"food",name:"Саперави",desc:"Грузинская кухня",rating:4.7,reviews:128},
-                {cat:"fun",name:"Квест «Тайная комната»",desc:"Командный квест 60 мин",rating:4.8,reviews:94},
-                {cat:"movie",name:"Интерстеллар",desc:"Космическая драма",rating:5.0,reviews:312},
-              ].map((item,i)=>{
-                const cc=CAT_COLORS[item.cat];
-                const icon={movie:"film",food:"fork",fun:"compass",gift:"gift"}[item.cat];
-                return(
-                  <div key={i} className="rsh-card" style={{...$.histCard,animation:anim?`su .4s ease ${i*60}ms both`:"none",cursor:"pointer"}} onClick={()=>{
-                    const c=CATS.find(x=>x.id===item.cat);
-                    if(c)pickCat(c);
-                  }}>
-                    <div style={{...$.iconWrap,width:48,height:48,background:cc.l,borderRadius:14}}><I name={icon} size={20} color={cc.m}/></div>
-                    <div style={{flex:1}}>
-                      <p style={{fontSize:15,fontWeight:600,color:C.n950}}>{item.name}</p>
-                      <p style={{fontSize:12,color:C.n400,marginTop:2}}>{item.desc}</p>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:3,justifyContent:"flex-end"}}>
-                        <I name="star" size={12} color={C.amber}/><span style={{fontSize:13,fontWeight:600,color:C.amber}}>{item.rating}</span>
-                      </div>
-                      <p style={{fontSize:11,color:C.n400,marginTop:2}}>{item.reviews} отзывов</p>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* By category */}
-              <p style={{...$.secLabel,marginTop:20}}>По категориям</p>
-              <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:8}}>
+              {/* Categories */}
+              <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:12,marginBottom:20}}>
                 {CATS.map((c,i)=>{
                   const cc=CAT_COLORS[c.id];
                   return(
-                    <button key={c.id} style={{...$.altCard,minWidth:120,textAlign:"center",cursor:"pointer",animation:anim?`su .4s ease ${(i+3)*60}ms both`:"none"}} onClick={()=>pickCat(c)}>
-                      <div style={{...$.iconWrap,width:44,height:44,background:cc.l,margin:"0 auto 8px"}}><I name={c.icon} size={20} color={cc.m} sw={1.8}/></div>
-                      <p style={{fontSize:13,fontWeight:600,color:C.n950}}>{c.label}</p>
+                    <button key={c.id} className="rsh-card" style={{...$.altCard,minWidth:100,textAlign:"center",cursor:"pointer",animation:anim?`su .4s ease ${i*60}ms both`:"none",flexShrink:0}} onClick={()=>pickCat(c)}>
+                      <div style={{...$.iconWrap,width:40,height:40,background:cc.l,margin:"0 auto 6px"}}><I name={c.icon} size={18} color={cc.m} sw={1.8}/></div>
+                      <p style={{fontSize:12,fontWeight:600,color:C.n950}}>{c.label}</p>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Recent reviews */}
-              <p style={{...$.secLabel,marginTop:20}}>Свежие отзывы</p>
-              {[
-                {user:"Аня М.",text:"Потрясающие хинкали! Обязательно берите с бараниной.",place:"Саперави",rating:5},
-                {user:"Макс К.",text:"Квест реально сложный, но мы справились за 58 минут!",place:"Тайная комната",rating:4},
-                {user:"Лера В.",text:"Лучший рамен в Москве, бульон невероятный.",place:"Рамен изакая",rating:5},
-              ].map((r,i)=>(
-                <div key={i} style={{padding:"14px 16px",background:C.n50,border:`0.5px solid ${C.n200}`,borderRadius:14,marginBottom:8,animation:anim?`su .4s ease ${(i+6)*60}ms both`:"none"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:28,height:28,borderRadius:14,background:C.n100,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        <span style={{fontSize:11,fontWeight:600,color:C.n600}}>{r.user[0]}</span>
-                      </div>
-                      <span style={{fontSize:13,fontWeight:600,color:C.n950}}>{r.user}</span>
-                    </div>
-                    <div style={{display:"flex",gap:2}}>{Array.from({length:r.rating}).map((_,j)=><I key={j} name="star" size={11} color={C.amber} fill={C.amber} sw={0}/>)}</div>
-                  </div>
-                  <p style={{fontSize:13,color:C.n600,lineHeight:1.5}}>{r.text}</p>
-                  <p style={{fontSize:11,color:C.n400,marginTop:6}}>о «{r.place}»</p>
+              {/* Recent decisions as feed */}
+              <p className="rsh-secl" style={$.secLabel}>Ваша лента</p>
+              {history.length===0?(
+                <div style={{textAlign:"center",padding:"32px 16px",background:C.n50,borderRadius:16}}>
+                  <I name="compass" size={32} color={C.n200}/>
+                  <p style={{fontSize:15,fontWeight:600,color:C.n400,marginTop:12}}>Здесь будут ваши открытия</p>
+                  <p style={{fontSize:13,color:C.n400,marginTop:4}}>Получите первую рекомендацию — она появится в ленте</p>
+                  <button onClick={()=>{goHome();}} style={{marginTop:16,padding:"10px 24px",background:C.coral,color:"#fff",borderRadius:12,border:"none",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Начать</button>
                 </div>
-              ))}
+              ):history.filter(h=>!searchQ||h.name?.toLowerCase().includes(searchQ.toLowerCase())).map((h,i)=>{
+                const cc=CAT_COLORS[h.cat]||CAT_COLORS.movie;
+                const icon={movie:"film",food:"fork",fun:"compass",gift:"gift"}[h.cat];
+                return(
+                  <div key={h.id} className="rsh-card" style={{...$.histCard,animation:anim?`su .4s ease ${i*60}ms both`:"none"}}>
+                    <div style={{...$.iconWrap,width:48,height:48,background:cc.l,borderRadius:14}}><I name={icon} size={20} color={cc.m}/></div>
+                    <div style={{flex:1}}>
+                      <p style={{fontSize:15,fontWeight:600,color:C.n950}}>{h.name}</p>
+                      <p style={{fontSize:12,color:C.n400,marginTop:2}}>{h.when}</p>
+                    </div>
+                    {h.rating>0&&<div style={{display:"flex",alignItems:"center",gap:3,padding:"4px 8px",background:C.amberL,borderRadius:8}}><I name="star" size={12} color={C.amber} fill={C.amber} sw={0}/><span style={{fontSize:12,fontWeight:600,color:C.amber}}>{typeof h.rating==='number'?h.rating.toFixed(1):h.rating}</span></div>}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -900,78 +877,80 @@ export default function Reshalka(){
               <h1 style={{fontFamily:"'Outfit'",fontSize:28,fontWeight:800,color:C.n950,letterSpacing:-.8,marginBottom:20}}>Вместе</h1>
 
               {/* Create new */}
-              <button style={{...$.quickBtn,marginBottom:20}} onClick={()=>{const c=CATS[Math.floor(Math.random()*4)];pickCat(c);setToast("Создаём голосование...");}}>
-                <div style={{...$.iconWrap,width:44,height:44,background:C.roseL,borderRadius:14}}><I name="vote" size={20} color={C.rose} sw={1.8}/></div>
-                <div style={{flex:1,textAlign:"left"}}>
-                  <p style={{fontSize:15,fontWeight:600,color:C.n950}}>Новое голосование</p>
-                  <p style={{fontSize:12,color:C.n400,marginTop:1}}>Решайте вместе с друзьями</p>
+              {!showCreateVoting?(
+                <button className="rsh-card" style={{...$.quickBtn,marginBottom:20}} onClick={()=>setShowCreateVoting(true)}>
+                  <div style={{...$.iconWrap,width:44,height:44,background:C.roseL,borderRadius:14}}><I name="vote" size={20} color={C.rose} sw={1.8}/></div>
+                  <div style={{flex:1,textAlign:"left"}}>
+                    <p style={{fontSize:15,fontWeight:600,color:C.n950}}>Новое голосование</p>
+                    <p style={{fontSize:12,color:C.n400,marginTop:1}}>Решайте вместе с друзьями</p>
+                  </div>
+                  <I name="arrowR" size={16} color={C.n400}/>
+                </button>
+              ):(
+                <div className="rsh-card" style={{padding:"18px",background:C.n50,border:`0.5px solid ${C.n200}`,borderRadius:16,marginBottom:20}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                    <p style={{fontSize:16,fontWeight:700,fontFamily:"'Outfit'",color:C.n950}}>Создать голосование</p>
+                    <button onClick={()=>setShowCreateVoting(false)} style={{background:"none",border:"none",cursor:"pointer"}}><I name="x" size={18} color={C.n400}/></button>
+                  </div>
+                  <p className="rsh-secl" style={{...$.secLabel,marginBottom:10}}>Выберите категорию</p>
+                  <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+                    {CATS.map(c=>{
+                      const cc=CAT_COLORS[c.id];
+                      const sel=votingCat===c.id;
+                      return(
+                        <button key={c.id} onClick={()=>setVotingCat(c.id)} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:12,border:sel?`1.5px solid ${cc.m}`:`0.5px solid ${C.n200}`,background:sel?cc.l:C.white,cursor:"pointer",fontFamily:"inherit"}}>
+                          <I name={c.icon} size={16} color={cc.m}/>
+                          <span style={{fontSize:13,fontWeight:sel?600:500,color:sel?cc.m:C.n950}}>{c.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button onClick={async()=>{
+                    if(!votingCat){setToast("Выберите категорию");return;}
+                    try{
+                      setToast("Создаём голосование...");
+                      const rec1 = await askClaudeAI(votingCat,[{question:"Формат",answer:"Любой"}]);
+                      const rec2 = await askClaudeAI(votingCat,[{question:"Формат",answer:"Популярное"}],[rec1.name]);
+                      const rec3 = await askClaudeAI(votingCat,[{question:"Формат",answer:"Необычное"}],[rec1.name,rec2.name]);
+                      const options = [rec1,rec2,rec3].map(r=>({name:r.name,desc:r.desc}));
+                      const data = await api('/api/voting/create',{method:'POST',body:JSON.stringify({category:votingCat,options})});
+                      setToast("Голосование создано! Код: "+data.room.inviteCode.slice(0,8));
+                      setShowCreateVoting(false);setVotingCat(null);
+                    }catch(e){setToast("Ошибка: "+e.message);}
+                  }} style={{width:"100%",padding:"14px",background:C.coral,color:"#fff",borderRadius:14,border:"none",fontSize:15,fontWeight:600,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 16px rgba(232,89,60,.2)"}}>
+                    Создать с помощью AI
+                  </button>
                 </div>
-                <I name="arrowR" size={16} color={C.n400}/>
-              </button>
+              )}
 
-              {/* Active voting */}
-              <p className="rsh-secl" style={$.secLabel}>Активные</p>
-              <div style={{...$.resultCard,marginBottom:14,animation:anim?"su .4s ease":"none"}}>
-                <div style={{padding:"16px 18px"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{...$.iconWrap,width:36,height:36,background:C.emeraldL}}><I name="fork" size={16} color={C.emerald}/></div>
-                      <div>
-                        <p style={{fontSize:15,fontWeight:600,color:C.n950}}>Где поесть в пятницу</p>
-                        <p style={{fontSize:12,color:C.n400}}>Осталось 2ч 15мин</p>
-                      </div>
-                    </div>
-                    <span style={{...$.tag,background:C.emeraldL,color:C.emerald}}>3/5</span>
-                  </div>
-
-                  {/* Participants */}
-                  <div style={{display:"flex",gap:6,marginBottom:14}}>
-                    {[{n:"Вы",c:C.coralL,t:C.coral,done:true},{n:"Аня",c:C.emeraldL,t:C.emerald,done:true},{n:"Макс",c:C.azureL,t:C.azure,done:true},{n:"Лера",c:C.roseL,t:C.rose,done:false},{n:"Дима",c:C.n100,t:C.n400,done:false}].map((p,i)=>(
-                      <div key={i} style={{textAlign:"center"}}>
-                        <div style={{width:36,height:36,borderRadius:18,background:p.c,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
-                          <span style={{fontSize:12,fontWeight:600,color:p.t}}>{p.n[0]}</span>
-                          {p.done&&<div style={{position:"absolute",bottom:-2,right:-2,width:14,height:14,borderRadius:7,background:C.emerald,border:"2px solid #fff",display:"flex",alignItems:"center",justifyContent:"center"}}><I name="check" size={8} color="#fff" sw={3}/></div>}
+              {/* Rooms list */}
+              {history.length>0?(
+                <>
+                  <p className="rsh-secl" style={$.secLabel}>Ваши решения</p>
+                  {history.slice(0,5).map((h,i)=>{
+                    const cc=CAT_COLORS[h.cat]||CAT_COLORS.movie;
+                    const icon={movie:"film",food:"fork",fun:"compass",gift:"gift"}[h.cat];
+                    return(
+                      <div key={h.id} className="rsh-card" style={{...$.histCard,animation:anim?`su .4s ease ${i*60}ms both`:"none"}}>
+                        <div style={{...$.iconWrap,width:40,height:40,background:cc.l,borderRadius:12}}><I name={icon} size={18} color={cc.m}/></div>
+                        <div style={{flex:1}}>
+                          <p style={{fontSize:14,fontWeight:600,color:C.n950}}>{h.name}</p>
+                          <p style={{fontSize:12,color:C.n400,marginTop:1}}>{h.when}</p>
                         </div>
-                        <p style={{fontSize:10,color:C.n400,marginTop:3}}>{p.n}</p>
+                        <button onClick={()=>{setToast("Ссылка скопирована");}} style={{padding:"6px 12px",background:C.azureL,borderRadius:10,border:"none",cursor:"pointer"}}>
+                          <I name="share" size={14} color={C.azure}/>
+                        </button>
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Vote bars */}
-                  {[{name:"Саперави",pct:67},{name:"Хачапурная №1",pct:50},{name:"Рамен изакая",pct:33}].map((v,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                      <div style={{flex:1}}>
-                        <p style={{fontSize:13,fontWeight:600,color:C.n950,marginBottom:4}}>{v.name}</p>
-                        <div style={{height:6,borderRadius:3,background:C.n100}}>
-                          <div style={{height:6,borderRadius:3,background:C.emerald,width:`${v.pct}%`,transition:"width .6s cubic-bezier(.32,.72,0,1)"}}/>
-                        </div>
-                      </div>
-                      <span style={{fontSize:14,fontWeight:700,color:C.emerald,minWidth:36,textAlign:"right"}}>{v.pct}%</span>
-                    </div>
-                  ))}
+                    );
+                  })}
+                </>
+              ):(
+                <div style={{textAlign:"center",padding:"32px 16px",background:C.n50,borderRadius:16}}>
+                  <I name="vote" size={32} color={C.n200}/>
+                  <p style={{fontSize:15,fontWeight:600,color:C.n400,marginTop:12}}>Нет активных голосований</p>
+                  <p style={{fontSize:13,color:C.n400,marginTop:4}}>Создайте первое и пригласите друзей</p>
                 </div>
-              </div>
-
-              {/* Past votings */}
-              <p className="rsh-secl" style={$.secLabel}>Завершённые</p>
-              {[
-                {title:"Что посмотреть в субботу",cat:"movie",winner:"Интерстеллар",when:"2 дня назад",people:4},
-                {title:"Подарок Лере",cat:"gift",winner:"Мастер-класс гончарства",when:"Неделю назад",people:3},
-              ].map((v,i)=>{
-                const cc=CAT_COLORS[v.cat];
-                const icon={movie:"film",food:"fork",fun:"compass",gift:"gift"}[v.cat];
-                return(
-                  <div key={i} className="rsh-card" style={{...$.histCard,animation:anim?`su .4s ease ${(i+2)*60}ms both`:"none"}}>
-                    <div style={{...$.iconWrap,width:40,height:40,background:cc.l,borderRadius:12}}><I name={icon} size={18} color={cc.m}/></div>
-                    <div style={{flex:1}}>
-                      <p style={{fontSize:14,fontWeight:600,color:C.n950}}>{v.title}</p>
-                      <p style={{fontSize:12,color:C.n400,marginTop:1}}>Победил: {v.winner}</p>
-                      <p style={{fontSize:11,color:C.n400,marginTop:1}}>{v.when} · {v.people} чел.</p>
-                    </div>
-                    <I name="check" size={18} color={C.emerald}/>
-                  </div>
-                );
-              })}
+              )}
             </div>
           )}
         </div>
