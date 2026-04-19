@@ -36,6 +36,8 @@ function I({name,size=20,color="currentColor",sw=1.5,fill="none"}){
     share:<><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></>,
     mail:<><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></>,
     shield:<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></>,
+    sun:<><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></>,
+    moon:<><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">{p[name]}</svg>;
 }
@@ -127,7 +129,7 @@ async function askClaudeAI(catId, answers, rejected=[]){
       method: 'POST',
       body: JSON.stringify({ category: catId, answers, rejected }),
     });
-    return data.recommendation;
+    return { ...data.recommendation, _decisionId: data.decisionId };
   } catch (err) {
     console.log("API fallback:", err.message);
     return getAIRec(catId, answers);
@@ -162,6 +164,19 @@ export default function Reshalka(){
   const [usedReqs,setUsedReqs]=useState(0);
   const [showPaywall,setShowPaywall]=useState(false);
   const [billingPeriod,setBillingPeriod]=useState("year");
+  const [decisionRating,setDecisionRating]=useState(0);
+  const [lastDecisionId,setLastDecisionId]=useState(null);
+  const [dark,setDark]=useState(()=>{ try{const s=localStorage.getItem('reshalka_dark');if(s!==null)return s==='1';return window.matchMedia?.('(prefers-color-scheme:dark)').matches||false;}catch{return false;} });
+  const toggleDark=()=>{const v=!dark;setDark(v);try{localStorage.setItem('reshalka_dark',v?'1':'0');}catch{}};
+
+  /* Dynamic colors */
+  const D = dark ? {
+    n950:"#f2f2f7",n600:"#aeaeb2",n400:"#8e8e93",n200:"#3a3a3c",n100:"#2c2c2e",n50:"#1c1c1e",white:"#1c1c1e",
+    bg:"#000",phoneBg:"#1c1c1e",cardBg:"#2c2c2e",inputBg:"#2c2c2e",rootBg:"#000",
+  }:{
+    n950:C.n950,n600:C.n600,n400:C.n400,n200:C.n200,n100:C.n100,n50:C.n50,white:C.white,
+    bg:"#fff",phoneBg:"#fff",cardBg:C.n50,inputBg:C.n50,rootBg:"linear-gradient(145deg,#f5f4f1 0%,#e8e6e1 100%)",
+  };
   /* Auth state */
   const [authStep,setAuthStep]=useState("welcome");
   const [authEmail,setAuthEmail]=useState("");
@@ -294,13 +309,13 @@ export default function Reshalka(){
       intervalRef.current=setInterval(()=>setLoadMsg(p=>Math.min(p+1,LOAD_MSGS.length-1)),1200);
       askClaudeAI(cat.id,newA).then(result=>{
         clearInterval(intervalRef.current);
-        setRec(result);
+        setRec(result); setLastDecisionId(result._decisionId||null); setDecisionRating(0);
         setAiSource("claude");
         setLoading(false);
         if(!isPro)setUsedReqs(p=>p+1);
       }).catch(()=>{
         clearInterval(intervalRef.current);
-        setRec(getAIRec(cat.id,newA));
+        setRec(getAIRec(cat.id,newA)); setLastDecisionId(null); setDecisionRating(0);
         setAiSource("fallback");
         setLoading(false);
         if(!isPro)setUsedReqs(p=>p+1);
@@ -317,7 +332,7 @@ export default function Reshalka(){
     intervalRef.current=setInterval(()=>setLoadMsg(p=>Math.min(p+1,LOAD_MSGS.length-1)),1000);
     askClaudeAI(cat.id,answers,newRejected).then(result=>{
       clearInterval(intervalRef.current);
-      setRec(result);
+      setRec(result); setLastDecisionId(result._decisionId||null); setDecisionRating(0);
       setAiSource("claude");
       setLoading(false);setLiked(false);
     }).catch(()=>{
@@ -342,7 +357,7 @@ export default function Reshalka(){
   const greeting=hour<6?"Доброй ночи":hour<12?"Доброе утро":hour<18?"Добрый день":"Добрый вечер";
 
   return(
-    <div style={$.root} id="reshalka-root">
+    <div style={{...$.root,background:dark?"#000":"linear-gradient(145deg,#f5f4f1 0%,#e8e6e1 100%)"}} id="reshalka-root">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
@@ -353,22 +368,32 @@ export default function Reshalka(){
         @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
         @keyframes toast{0%{opacity:0;transform:translateY(20px)}10%{opacity:1;transform:translateY(0)}90%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-10px)}}
         @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
-        .opt-btn:active{transform:scale(.97)!important;background:${C.n100}!important}
+        .opt-btn:active{transform:scale(.97)!important;background:${dark?"#2c2c2e":"#f2f2f7"}!important}
+        ${dark?`
+        #reshalka-phone{color:#f2f2f7!important}
+        #reshalka-phone p,#reshalka-phone span,#reshalka-phone h1,#reshalka-phone h2,#reshalka-phone h3{color:#f2f2f7}
+        #reshalka-phone input{background:#2c2c2e!important;border-color:#3a3a3c!important;color:#f2f2f7!important}
+        .rsh-card{background:#2c2c2e!important;border-color:#3a3a3c!important}
+        .rsh-secl{color:#8e8e93!important}
+        .rsh-sub{color:#aeaeb2!important}
+        .rsh-muted{color:#8e8e93!important}
+        .rsh-tabbar{background:#1c1c1e!important;border-color:#2c2c2e!important}
+        `:``}
         @media(max-width:500px){
-          #reshalka-root{padding:0!important;background:#fff!important;align-items:stretch!important}
+          #reshalka-root{padding:0!important;background:${dark?"#000":"#fff"}!important;align-items:stretch!important}
           #reshalka-phone{width:100%!important;height:100vh!important;height:100dvh!important;border-radius:0!important;box-shadow:none!important}
           #reshalka-statusbar{display:none!important}
           #reshalka-homebar{display:none!important}
         }
         @media(display-mode:standalone){
-          #reshalka-root{padding:0!important;background:#fff!important;align-items:stretch!important}
+          #reshalka-root{padding:0!important;background:${dark?"#000":"#fff"}!important;align-items:stretch!important}
           #reshalka-phone{width:100%!important;height:100vh!important;height:100dvh!important;border-radius:0!important;box-shadow:none!important}
           #reshalka-statusbar{display:none!important}
           #reshalka-homebar{display:none!important}
         }
       `}</style>
 
-      <div style={$.phone} id="reshalka-phone">
+      <div style={{...$.phone,background:dark?"#1c1c1e":"#fff",borderRadius:44}} id="reshalka-phone">
         {/* Status bar */}
         <div style={$.statusBar} id="reshalka-statusbar">
           <span style={$.statusTime}>
@@ -486,7 +511,7 @@ export default function Reshalka(){
               </div>
 
               {/* Quick AI */}
-              <button style={$.quickBtn} onClick={()=>pickCat(CATS[Math.floor(Math.random()*4)])}>
+              <button className="rsh-card" style={$.quickBtn} onClick={()=>pickCat(CATS[Math.floor(Math.random()*4)])}>
                 <div style={{...$.iconWrap,width:40,height:40,background:C.coralL}}><I name="sparkle" size={18} color={C.coral}/></div>
                 <div style={{flex:1,textAlign:"left"}}>
                   <p style={{fontSize:15,fontWeight:600,color:C.n950}}>Быстрый выбор</p>
@@ -516,12 +541,12 @@ export default function Reshalka(){
               )}
 
               {/* Categories */}
-              <p style={$.secLabel}>Категории</p>
+              <p className="rsh-secl" style={$.secLabel}>Категории</p>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:28}}>
                 {CATS.map((c,i)=>{
                   const cc=CAT_COLORS[c.id];
                   return(
-                    <button key={c.id} style={{...$.catCard,animation:anim?`su .45s ease ${i*60}ms both`:"none"}} onClick={()=>pickCat(c)}>
+                    <button key={c.id} className="rsh-card" style={{...$.catCard,animation:anim?`su .45s ease ${i*60}ms both`:"none"}} onClick={()=>pickCat(c)}>
                       <div style={{...$.iconWrap,background:cc.l,marginBottom:10}}><I name={c.icon} size={22} color={cc.m} sw={1.8}/></div>
                       <p style={{fontSize:15,fontWeight:700,fontFamily:"'Outfit'",color:C.n950}}>{c.label}</p>
                       <p style={{fontSize:12,color:C.n400,marginTop:2}}>{c.sub}</p>
@@ -531,12 +556,18 @@ export default function Reshalka(){
               </div>
 
               {/* History */}
-              <p style={$.secLabel}>Последние решения</p>
-              {history.slice(0,3).map((h,i)=>{
+              <p className="rsh-secl" style={$.secLabel}>Последние решения</p>
+              {history.length===0?(
+                <div style={{textAlign:"center",padding:"24px 16px",background:C.n50,borderRadius:16,marginBottom:20}}>
+                  <I name="sparkle" size={28} color={C.n200}/>
+                  <p style={{fontSize:14,fontWeight:600,color:C.n400,marginTop:10}}>Пока нет решений</p>
+                  <p style={{fontSize:12,color:C.n400,marginTop:4}}>Выберите категорию и получите первую AI-рекомендацию</p>
+                </div>
+              ):history.slice(0,3).map((h,i)=>{
                 const cc=CAT_COLORS[h.cat]||CAT_COLORS.movie;
                 const icon={movie:"film",food:"fork",fun:"compass",gift:"gift"}[h.cat];
                 return(
-                  <div key={h.id} style={{...$.histCard,animation:anim?`su .4s ease ${(i+4)*60}ms both`:"none"}}>
+                  <div key={h.id} className="rsh-card" style={{...$.histCard,animation:anim?`su .4s ease ${(i+4)*60}ms both`:"none"}}>
                     <div style={{...$.iconWrap,width:36,height:36,background:cc.l}}><I name={icon} size={16} color={cc.m}/></div>
                     <div style={{flex:1}}>
                       <p style={{fontSize:14,fontWeight:600,color:C.n950}}>{h.name}</p>
@@ -603,7 +634,7 @@ export default function Reshalka(){
                 </div>
               ):rec?(
                 <>
-                  <div style={$.resultCard}>
+                  <div className="rsh-card" style={$.resultCard}>
                     <div style={{height:140,background:`linear-gradient(135deg, ${accentL} 0%, ${accent}18 100%)`,display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
                       <div style={{...$.iconWrap,width:64,height:64,background:"rgba(255,255,255,.88)",backdropFilter:"blur(8px)"}}><I name={cat.icon} size={30} color={accent} sw={1.6}/></div>
                       {aiSource==="claude"&&<div style={{position:"absolute",top:12,right:12,display:"flex",alignItems:"center",gap:4,padding:"4px 10px",background:"rgba(255,255,255,.9)",borderRadius:20,backdropFilter:"blur(8px)"}}><I name="sparkle" size={12} color={accent}/><span style={{fontSize:10,fontWeight:700,color:accent}}>Claude AI</span></div>}
@@ -622,6 +653,16 @@ export default function Reshalka(){
                           <I name="sparkle" size={14} color={accent}/><span style={{fontSize:12,fontWeight:600,color:accent}}>{aiSource==="claude"?"Claude AI объясняет":"Почему это"}</span>
                         </div>
                         <p style={{fontSize:13,color:C.n600,lineHeight:1.55}}>{rec.reason}</p>
+                      </div>
+
+                      {/* Rating */}
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:14}}>
+                        <span style={{fontSize:12,color:C.n400,marginRight:4}}>Оцените:</span>
+                        {[1,2,3,4,5].map(s=>(
+                          <button key={s} onClick={()=>{setDecisionRating(s);if(lastDecisionId)api('/api/decisions/'+lastDecisionId+'/rate',{method:'POST',body:JSON.stringify({rating:s})}).catch(()=>{});setToast("Спасибо за оценку!");}} style={{background:"none",border:"none",cursor:"pointer",padding:2,transition:"transform .15s",...(s<=decisionRating?{transform:"scale(1.1)"}:{})}}>
+                            <I name="star" size={22} color={s<=decisionRating?C.amber:C.n200} fill={s<=decisionRating?C.amber:"none"} sw={s<=decisionRating?0:1.5}/>
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -715,7 +756,7 @@ export default function Reshalka(){
 
               {/* Analytics (PRO only) */}
               {isPro&&<>
-                <p style={$.secLabel}>Аналитика вкусов</p>
+                <p className="rsh-secl" style={$.secLabel}>Аналитика вкусов</p>
                 <div style={{padding:"16px",background:C.n50,border:`0.5px solid ${C.n200}`,borderRadius:16,marginBottom:20}}>
                   {[{label:"Фильмы",pct:38,c:C.coral},{label:"Еда",pct:28,c:C.emerald},{label:"Досуг",pct:22,c:C.azure},{label:"Подарки",pct:12,c:C.rose}].map((a,i)=>(
                     <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:i<3?10:0}}>
@@ -739,16 +780,29 @@ export default function Reshalka(){
                 </div>
               </>}
 
-              <p style={$.secLabel}>Предпочтения</p>
+              <p className="rsh-secl" style={$.secLabel}>Настройки</p>
+              <div style={{padding:"14px 16px",background:dark?"#2c2c2e":C.n50,border:`0.5px solid ${dark?"#3a3a3c":C.n200}`,borderRadius:14,marginBottom:20}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <I name={dark?"moon":"sun"} size={18} color={dark?C.amber:C.amber}/>
+                    <span style={{fontSize:14,fontWeight:500,color:dark?"#f2f2f7":C.n950}}>Тёмная тема</span>
+                  </div>
+                  <button onClick={toggleDark} style={{width:44,height:26,borderRadius:13,background:dark?C.coral:C.n200,border:"none",cursor:"pointer",position:"relative",transition:"background .2s"}}>
+                    <div style={{width:22,height:22,borderRadius:11,background:"#fff",position:"absolute",top:2,left:dark?20:2,transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.15)"}}/>
+                  </button>
+                </div>
+              </div>
+
+              <p className="rsh-secl" style={$.secLabel}>Предпочтения</p>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
                 {["Грузинская кухня","Триллеры","Квесты","На двоих","Средний бюджет"].map((t,i)=><span key={i} style={$.tag}>{t}</span>)}
               </div>
-              <p style={$.secLabel}>История</p>
+              <p className="rsh-secl" style={$.secLabel}>История</p>
               {history.map((h,i)=>{
                 const cc=CAT_COLORS[h.cat]||CAT_COLORS.movie;
                 const icon={movie:"film",food:"fork",fun:"compass",gift:"gift"}[h.cat];
                 return(
-                  <div key={h.id} style={{...$.histCard,animation:anim?`su .4s ease ${i*50}ms both`:"none"}}>
+                  <div key={h.id} className="rsh-card" style={{...$.histCard,animation:anim?`su .4s ease ${i*50}ms both`:"none"}}>
                     <div style={{...$.iconWrap,width:36,height:36,background:cc.l}}><I name={icon} size={16} color={cc.m}/></div>
                     <div style={{flex:1}}>
                       <p style={{fontSize:14,fontWeight:600,color:C.n950}}>{h.name}</p>
@@ -774,7 +828,7 @@ export default function Reshalka(){
               </div>
 
               {/* Trending */}
-              <p style={$.secLabel}>Популярное сейчас</p>
+              <p className="rsh-secl" style={$.secLabel}>Популярное сейчас</p>
               {[
                 {cat:"food",name:"Саперави",desc:"Грузинская кухня",rating:4.7,reviews:128},
                 {cat:"fun",name:"Квест «Тайная комната»",desc:"Командный квест 60 мин",rating:4.8,reviews:94},
@@ -783,7 +837,7 @@ export default function Reshalka(){
                 const cc=CAT_COLORS[item.cat];
                 const icon={movie:"film",food:"fork",fun:"compass",gift:"gift"}[item.cat];
                 return(
-                  <div key={i} style={{...$.histCard,animation:anim?`su .4s ease ${i*60}ms both`:"none",cursor:"pointer"}} onClick={()=>{
+                  <div key={i} className="rsh-card" style={{...$.histCard,animation:anim?`su .4s ease ${i*60}ms both`:"none",cursor:"pointer"}} onClick={()=>{
                     const c=CATS.find(x=>x.id===item.cat);
                     if(c)pickCat(c);
                   }}>
@@ -856,7 +910,7 @@ export default function Reshalka(){
               </button>
 
               {/* Active voting */}
-              <p style={$.secLabel}>Активные</p>
+              <p className="rsh-secl" style={$.secLabel}>Активные</p>
               <div style={{...$.resultCard,marginBottom:14,animation:anim?"su .4s ease":"none"}}>
                 <div style={{padding:"16px 18px"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
@@ -899,7 +953,7 @@ export default function Reshalka(){
               </div>
 
               {/* Past votings */}
-              <p style={$.secLabel}>Завершённые</p>
+              <p className="rsh-secl" style={$.secLabel}>Завершённые</p>
               {[
                 {title:"Что посмотреть в субботу",cat:"movie",winner:"Интерстеллар",when:"2 дня назад",people:4},
                 {title:"Подарок Лере",cat:"gift",winner:"Мастер-класс гончарства",when:"Неделю назад",people:3},
@@ -907,7 +961,7 @@ export default function Reshalka(){
                 const cc=CAT_COLORS[v.cat];
                 const icon={movie:"film",food:"fork",fun:"compass",gift:"gift"}[v.cat];
                 return(
-                  <div key={i} style={{...$.histCard,animation:anim?`su .4s ease ${(i+2)*60}ms both`:"none"}}>
+                  <div key={i} className="rsh-card" style={{...$.histCard,animation:anim?`su .4s ease ${(i+2)*60}ms both`:"none"}}>
                     <div style={{...$.iconWrap,width:40,height:40,background:cc.l,borderRadius:12}}><I name={icon} size={18} color={cc.m}/></div>
                     <div style={{flex:1}}>
                       <p style={{fontSize:14,fontWeight:600,color:C.n950}}>{v.title}</p>
@@ -921,7 +975,7 @@ export default function Reshalka(){
             </div>
           )}
         </div>
-        {isLoggedIn&&<><div style={$.tabBar} role="navigation" aria-label="Основная навигация">
+        {isLoggedIn&&<><div className="rsh-tabbar" style={$.tabBar} role="navigation" aria-label="Основная навигация">
           {[
             {id:"home",icon:"home",label:"Главная",action:goHome},
             {id:"search",icon:"search",label:"Обзор",action:()=>{setTab("search");go("explore");}},
@@ -998,8 +1052,8 @@ export default function Reshalka(){
 
 /* ─── Styles ─── */
 const $={
-  root:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px",fontFamily:"'DM Sans',-apple-system,sans-serif",background:"linear-gradient(145deg,#f5f4f1 0%,#e8e6e1 100%)"},
-  phone:{width:375,height:812,background:"#fff",borderRadius:44,overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.12),0 2px 6px rgba(0,0,0,.06),inset 0 0 0 .5px rgba(0,0,0,.08)",position:"relative",display:"flex",flexDirection:"column",paddingTop:"env(safe-area-inset-top,0)",paddingBottom:"env(safe-area-inset-bottom,0)"},
+  root:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px",fontFamily:"'DM Sans',-apple-system,sans-serif"},
+  phone:{width:375,height:812,overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.12),0 2px 6px rgba(0,0,0,.06),inset 0 0 0 .5px rgba(0,0,0,.08)",position:"relative",display:"flex",flexDirection:"column",paddingTop:"env(safe-area-inset-top,0)",paddingBottom:"env(safe-area-inset-bottom,0)"},
   statusBar:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 28px 6px",flexShrink:0},
   statusTime:{fontSize:15,fontWeight:600,color:C.n950,fontFamily:"'Outfit'"},
   content:{flex:1,overflowY:"auto",overflowX:"hidden",WebkitOverflowScrolling:"touch"},
