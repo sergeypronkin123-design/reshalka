@@ -105,48 +105,31 @@ function getAIRec(cat,answers){
   return data;
 }
 
-/* ─── Claude API Integration (Task 5: AI Engineer) ─── */
-const CAT_LABELS={movie:"Фильмы и сериалы",food:"Рестораны и еда",fun:"Досуг и развлечения",gift:"Подарки и покупки"};
+/* ─── Backend API Integration (Production) ─── */
+const API_URL = window.location.hostname === 'localhost' ? 'http://localhost:3001' : 'https://reshalka-api.onrender.com';
+
+function getToken() { try { return localStorage.getItem('reshalka_token'); } catch { return null; } }
+function setToken(t) { try { localStorage.setItem('reshalka_token', t); } catch {} }
+function clearToken() { try { localStorage.removeItem('reshalka_token'); } catch {} }
+
+async function api(path, options = {}) {
+  const token = getToken();
+  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers: { ...headers, ...options.headers } });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'API error');
+  return data;
+}
 
 async function askClaudeAI(catId, answers, rejected=[]){
-  const catLabel=CAT_LABELS[catId]||catId;
-  const answersText=answers.map(a=>`${a.question}: ${a.answer}`).join("\n");
-  const rejectedText=rejected.length?`\n\nНЕ предлагай эти варианты (уже отклонены): ${rejected.join(", ")}`:"";
-
-  const systemPrompt=`Ты — AI-консьерж приложения «Решалка». Помогаешь пользователю с повседневным выбором.
-
-Категория: ${catLabel}
-
-Твоя задача — дать ОДНУ конкретную персонализированную рекомендацию на основе ответов пользователя.
-
-Правила:
-- Будь конкретным: давай реальные названия (фильмов, ресторанов, мест, подарков)
-- Объяснение «Почему это» — 2-3 предложения, связывающие рекомендацию с ответами пользователя
-- Дай 2 альтернативы на случай если основной вариант не подойдёт
-- Тон: дружелюбный, уверенный, не формальный${rejectedText}
-
-Ответь СТРОГО в JSON без markdown-обёрток:
-{"name":"Название","desc":"Описание (1-2 предложения)","reason":"Почему именно это подходит (2-3 предложения)","tags":["тег1","тег2","тег3"],"alts":[{"name":"Альтернатива 1","desc":"Описание"},{"name":"Альтернатива 2","desc":"Описание"}]}`;
-
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: answersText }],
-      }),
+    const data = await api('/api/decide', {
+      method: 'POST',
+      body: JSON.stringify({ category: catId, answers, rejected }),
     });
-
-    if (!response.ok) throw new Error(`API ${response.status}`);
-    const data = await response.json();
-    const text = (data.content || []).map(b => b.type === "text" ? b.text : "").join("");
-    const cleaned = text.replace(/```json|```/g, "").trim();
-    return JSON.parse(cleaned);
+    return data.recommendation;
   } catch (err) {
-    console.log("Claude API fallback:", err.message);
+    console.log("API fallback:", err.message);
     return getAIRec(catId, answers);
   }
 }
@@ -199,6 +182,19 @@ export default function Reshalka(){
   useEffect(()=>{if(contentRef.current)contentRef.current.scrollTop=0;},[screen,authStep]);
   useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(null),2500);return()=>clearTimeout(t);}},[toast]);
 
+  /* Auto-login from saved token */
+  useEffect(()=>{
+    const token = getToken();
+    if (token) {
+      api('/api/profile').then(data => {
+        if (data.user) {
+          setIsLoggedIn(true); setScreen("home"); setAuthName(data.user.name);
+          setIsPro(data.user.isPro); setUsedReqs(5 - (data.user.freeRequestsLeft || 0));
+        }
+      }).catch(() => { clearToken(); });
+    }
+  }, []);
+
   const go=(s)=>{setScreen(s);};
   const pickCat=(c)=>{
     if(!isPro&&usedReqs>=FREE_LIMIT){setShowPaywall(true);return;}
@@ -240,25 +236,39 @@ export default function Reshalka(){
       if(prev)prev.focus();
     }
   };
-  const submitRegister=()=>{
+  const submitRegister=async()=>{
     setAuthError("");
     if(!authName.trim()){setAuthError("Введите имя");return;}
     if(!validateEmail(authEmail)){setAuthError("Некорректный email");return;}
     if(authPhone.replace(/\D/g,"").length<11){setAuthError("Введите номер полностью");return;}
     setAuthLoading(true);
-    setTimeout(()=>{setAuthLoading(false);setAuthStep("otp");setAuthOtp(["","",""," "]);setAuthOtp(["","","",""]);},800);
+    try {
+      await api('/api/auth/register', { method: 'POST', body: JSON.stringify({ email: authEmail, phone: formatPhone(authPhone), name: authName }) });
+      setAuthStep("otp"); setAuthOtp(["","","",""]);
+    } catch (err) { setAuthError(err.message); }
+    setAuthLoading(false);
   };
-  const submitLogin=()=>{
+  const submitLogin=async()=>{
     setAuthError("");
     if(!validateEmail(authEmail)){setAuthError("Некорректный email");return;}
     setAuthLoading(true);
-    setTimeout(()=>{setAuthLoading(false);setAuthStep("otp");},800);
+    try {
+      await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: authEmail }) });
+      setAuthStep("otp"); setAuthOtp(["","","",""]);
+    } catch (err) { setAuthError(err.message); }
+    setAuthLoading(false);
   };
-  const verifyOtp=()=>{
+  const verifyOtp=async()=>{
     const code=authOtp.join("");
     if(code.length<4){setAuthError("Введите 4 цифры");return;}
     setAuthLoading(true);
-    setTimeout(()=>{setAuthLoading(false);setIsLoggedIn(true);setScreen("home");setToast("Добро пожаловать!");},1000);
+    try {
+      const data = await api('/api/auth/verify', { method: 'POST', body: JSON.stringify({ email: authEmail, code, name: authName, phone: authPhone ? formatPhone(authPhone) : undefined }) });
+      setToken(data.token);
+      setIsLoggedIn(true); setScreen("home"); setToast("Добро пожаловать, " + (data.user?.name || "") + "!");
+      if (data.user) { setIsPro(data.user.isPro); setUsedReqs(5 - (data.user.freeRequestsLeft || 0)); }
+    } catch (err) { setAuthError(err.message); }
+    setAuthLoading(false);
   };
 
   const intervalRef=useRef(null);
@@ -315,6 +325,7 @@ export default function Reshalka(){
     setToast("Сохранено в историю");
   };
   const goHome=()=>{setCat(null);setTab("home");go("home");};
+  const logout=()=>{clearToken();setIsLoggedIn(false);setScreen("welcome");setAuthStep("welcome");setAuthEmail("");setAuthPhone("");setAuthName("");setToast("Вы вышли из аккаунта");};
 
   const accent=cat?CAT_COLORS[cat.id]?.m:C.coral;
   const accentL=cat?CAT_COLORS[cat.id]?.l:C.coralL;
@@ -726,10 +737,11 @@ export default function Reshalka(){
                   </div>
                 );
               })}
+              <button onClick={logout} style={{width:"100%",padding:"14px",background:C.n50,border:`0.5px solid ${C.n200}`,borderRadius:14,marginTop:20,fontSize:14,fontWeight:500,color:"#E24B4A",cursor:"pointer",fontFamily:"inherit"}}>Выйти из аккаунта</button>
             </div>
           )}
 
-          {/* ═══ EXPLORE ═══ */}
+          {/* ═══ EXPLORE ═══ */}}
           {isLoggedIn&&screen==="explore"&&(
             <div style={{...$.pad,animation:anim?"fi .4s ease":"none"}}>
               <h1 style={{fontFamily:"'Outfit'",fontSize:28,fontWeight:800,color:C.n950,letterSpacing:-.8,marginBottom:20}}>Обзор</h1>
